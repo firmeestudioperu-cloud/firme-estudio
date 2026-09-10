@@ -20,6 +20,8 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 export type AuthViewMode = 'register' | 'login' | 'staff' | 'forgot';
 
+const GOOGLE_CLIENT_ID = '56417271650-kpuge3mfsrdsnqafjn2qv3hubt2o6tve.apps.googleusercontent.com';
+
 interface GoogleAuthModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -36,6 +38,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
   initialMode = 'register',
 }) => {
   const [viewMode, setViewMode] = useState<AuthViewMode>('register');
+  const [gisReady, setGisReady] = useState(false);
 
   // Sincronizar modo inicial al abrir
   useEffect(() => {
@@ -44,7 +47,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
         setViewMode('login');
       } else if (initialMode === 'staff') {
         setViewMode('staff');
-      } else {
+      } else if (initialMode === 'register' || initialMode === 'google') {
         setViewMode('register');
       }
     }
@@ -73,14 +76,103 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
   const [showQr, setShowQr] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
 
+  // --------------------------------------------------------------------------
+  // GOOGLE IDENTITY SERVICES (GIS) — AUTENTICACIÓN DIRECTA SIN REDIRECCIÓN
+  // --------------------------------------------------------------------------
+  const handleGoogleCredentialResponse = async (response: any) => {
+    if (!response?.credential) return;
+    setLoadingAction('google');
+    setErrorMsg('');
+    try {
+      const res = await supabaseService.signInWithGoogleIdToken(response.credential);
+      if (res.success && res.user) {
+        localStorage.setItem('firme_auth_user', JSON.stringify(res.user));
+        setLoadingAction(null);
+        onSuccess(res.user);
+        onClose();
+      } else {
+        setErrorMsg(res.error || 'No se pudo iniciar sesión con Google.');
+        setLoadingAction(null);
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Error al autenticar con Google.');
+      setLoadingAction(null);
+    }
+  };
+
+  useEffect(() => {
+    if (!isOpen || (viewMode !== 'register' && viewMode !== 'login')) {
+      setGisReady(false);
+      return;
+    }
+
+    const initGoogleGsi = () => {
+      if (typeof window !== 'undefined' && (window as any).google?.accounts?.id) {
+        try {
+          (window as any).google.accounts.id.initialize({
+            client_id: GOOGLE_CLIENT_ID,
+            callback: handleGoogleCredentialResponse,
+            auto_select: false,
+            cancel_on_tap_outside: true,
+          });
+
+          const container = document.getElementById('google-gsi-container');
+          if (container) {
+            container.innerHTML = '';
+            (window as any).google.accounts.id.renderButton(container, {
+              type: 'standard',
+              theme: 'outline',
+              size: 'large',
+              text: viewMode === 'register' ? 'signup_with' : 'signin_with',
+              shape: 'pill',
+              logo_alignment: 'left',
+              width: 320,
+            });
+            setGisReady(true);
+          }
+        } catch (e) {
+          console.warn('Error inicializando Google GIS:', e);
+        }
+      }
+    };
+
+    initGoogleGsi();
+    const t1 = setTimeout(initGoogleGsi, 250);
+    const t2 = setTimeout(initGoogleGsi, 700);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [isOpen, viewMode]);
+
   if (!isOpen) return null;
 
   // --------------------------------------------------------------------------
-  // 1. AUTENTICACIÓN GOOGLE AUTH (ULTRARRÁPIDA)
+  // 1. AUTENTICACIÓN GOOGLE AUTH (FALLBACK)
   // --------------------------------------------------------------------------
   const handleGoogleAuth = async () => {
     setLoadingAction('google');
     setErrorMsg('');
+
+    // Si Google GIS está disponible, disparar el prompt nativo
+    if (typeof window !== 'undefined' && (window as any).google?.accounts?.id) {
+      try {
+        (window as any).google.accounts.id.prompt((notification: any) => {
+          if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+            fallbackRedirect();
+          }
+        });
+        setLoadingAction(null);
+        return;
+      } catch {
+        // continuar a fallback
+      }
+    }
+
+    await fallbackRedirect();
+  };
+
+  const fallbackRedirect = async () => {
     try {
       const res = await supabaseService.signInWithGoogle();
       if (res?.error) {
@@ -456,32 +548,40 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
             =================================================================== */}
         {(viewMode === 'register' || viewMode === 'login') && (
           <div className="space-y-4 mb-4">
-            <button
-              type="button"
-              onClick={handleGoogleAuth}
-              disabled={loadingAction === 'google'}
-              className="w-full bg-white hover:bg-[#F9F7F4] text-[#1A1815] border-2 border-[#E4DED4] hover:border-[#B5654A]/60 py-3 px-4 rounded-2xl font-bold text-xs sm:text-sm shadow-xs flex items-center justify-center gap-3 transition-all cursor-pointer"
-            >
-              <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
-                <path
-                  fill="#4285F4"
-                  d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"
-                />
-                <path
-                  fill="#34A853"
-                  d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"
-                />
-                <path
-                  fill="#FBBC05"
-                  d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.98 0 12s.45 3.82 1.25 5.42l4.03-3.15z"
-                />
-                <path
-                  fill="#EA4335"
-                  d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
-                />
-              </svg>
-              <span>Continuar con Google</span>
-            </button>
+            {/* Contenedor Oficial Google Identity Services (Abre popup directo con marca FIRME sin subdominio supabase) */}
+            <div className={`w-full flex justify-center min-h-[44px] ${gisReady ? 'flex' : 'hidden'}`}>
+              <div id="google-gsi-container" className="w-full flex justify-center" />
+            </div>
+
+            {/* Botón de respaldo (se muestra mientras carga Google GIS o si hay adblocker) */}
+            {!gisReady && (
+              <button
+                type="button"
+                onClick={handleGoogleAuth}
+                disabled={loadingAction === 'google'}
+                className="w-full bg-white hover:bg-[#F9F7F4] text-[#1A1815] border-2 border-[#E4DED4] hover:border-[#B5654A]/60 py-3 px-4 rounded-2xl font-bold text-xs sm:text-sm shadow-xs flex items-center justify-center gap-3 transition-all cursor-pointer"
+              >
+                <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                  <path
+                    fill="#4285F4"
+                    d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"
+                  />
+                  <path
+                    fill="#34A853"
+                    d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"
+                  />
+                  <path
+                    fill="#FBBC05"
+                    d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.98 0 12s.45 3.82 1.25 5.42l4.03-3.15z"
+                  />
+                  <path
+                    fill="#EA4335"
+                    d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
+                  />
+                </svg>
+                <span>{loadingAction === 'google' ? 'Conectando...' : 'Continuar con Google'}</span>
+              </button>
+            )}
 
             <div className="flex items-center gap-3">
               <div className="h-[1px] bg-[#E4DED4] flex-1" />

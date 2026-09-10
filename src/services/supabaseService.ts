@@ -680,6 +680,49 @@ export const supabaseService = {
     }
   },
 
+  async signInWithGoogleIdToken(idToken: string): Promise<{ success: boolean; user?: AuthUser; error?: string }> {
+    if (!supabase) return { success: false, error: 'Servicio Supabase no inicializado' };
+    try {
+      const { data, error } = await supabase.auth.signInWithIdToken({
+        provider: 'google',
+        token: idToken,
+      });
+
+      if (error) {
+        return { success: false, error: error.message };
+      }
+
+      if (!data?.user) {
+        return { success: false, error: 'No se recibieron datos de usuario desde Google.' };
+      }
+
+      const authUser = this.mapSupabaseUserToAuthUser(data.user);
+
+      // Si es alumna, sincronizar su perfil en la base de datos
+      if (authUser.role === 'client') {
+        try {
+          await supabase.from('clients').upsert(
+            {
+              auth_user_id: data.user.id,
+              name: authUser.name,
+              email: authUser.email,
+              phone: authUser.phone || '',
+              dni: authUser.dni || '70000000',
+              status: 'activo',
+            },
+            { onConflict: 'dni' }
+          );
+        } catch {
+          // ignore
+        }
+      }
+
+      return { success: true, user: authUser };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Error al autenticar con Google' };
+    }
+  },
+
   async saveClientProfile(profile: Partial<AuthUser>): Promise<boolean> {
     if (!supabase) return false;
     try {
