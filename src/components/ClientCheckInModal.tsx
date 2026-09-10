@@ -15,6 +15,8 @@ import {
   Layers,
   ArrowRight,
   Edit3,
+  Store,
+  LayoutDashboard,
 } from 'lucide-react';
 import { AuthUser, BookingRecord } from '../types';
 
@@ -27,6 +29,9 @@ interface ClientCheckInModalProps {
   onLogout: () => void;
   onPerformCheckIn: (bookingId: string) => void;
   onOpenEditProfile?: () => void;
+  onGoToReceptionDesk?: () => void;
+  onGoToAdminPanel?: () => void;
+  onGoToStaffHub?: () => void;
 }
 
 export const ClientCheckInModal: React.FC<ClientCheckInModalProps> = ({
@@ -38,6 +43,9 @@ export const ClientCheckInModal: React.FC<ClientCheckInModalProps> = ({
   onLogout,
   onPerformCheckIn,
   onOpenEditProfile,
+  onGoToReceptionDesk,
+  onGoToAdminPanel,
+  onGoToStaffHub,
 }) => {
   const [activeTab, setActiveTab] = useState<'checkin' | 'perfil' | 'salud'>('checkin');
   const [checkInSuccessId, setCheckInSuccessId] = useState<string | null>(null);
@@ -120,7 +128,7 @@ export const ClientCheckInModal: React.FC<ClientCheckInModalProps> = ({
                   Crear cuenta o Iniciar Sesión
                 </h3>
                 <p className="text-xs text-[#6B655C] max-w-xs mx-auto mt-0.5">
-                  Disponible por QR, Formulario SmartFit (DNI), WhatsApp Concierge o en Recepción.
+                  Acceso rápido con Google, correo o tu cuenta de alumna.
                 </p>
               </div>
 
@@ -129,7 +137,7 @@ export const ClientCheckInModal: React.FC<ClientCheckInModalProps> = ({
                 onClick={onOpenGoogleAuth}
                 className="w-full bg-[#B5654A] hover:bg-[#9A5340] text-white py-3 px-4 rounded-xl font-medium text-xs sm:text-sm shadow-xs flex items-center justify-center space-x-2 transition-all cursor-pointer"
               >
-                <span>Elegir Modalidad de Registro / Acceso</span>
+                <span>Crear Cuenta o Iniciar Sesión</span>
                 <ArrowRight className="w-4 h-4 text-white" />
               </button>
             </div>
@@ -207,6 +215,49 @@ export const ClientCheckInModal: React.FC<ClientCheckInModalProps> = ({
                 </button>
               </div>
             </div>
+
+            {/* Accesos exclusivos para Trabajadores (Owner / Admin) */}
+            {(currentUser.role === 'owner_dev' || currentUser.role === 'admin') && (
+              <div className="bg-[#FAF2E8] border border-[#B5654A]/30 rounded-xl p-3 space-y-2">
+                <div className="flex items-center justify-between text-xs font-bold text-[#B5654A]">
+                  <span className="flex items-center gap-1.5">
+                    <Shield className="w-3.5 h-3.5" />
+                    <span>Espacios de Trabajo Staff</span>
+                  </span>
+                  <span className="text-[10px] uppercase bg-[#B5654A] text-white px-2 py-0.2 rounded-full">
+                    Autorizado
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  {onGoToReceptionDesk && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        onGoToReceptionDesk();
+                      }}
+                      className="py-2 px-2.5 rounded-lg bg-[#B5654A] hover:bg-[#9A5340] text-white font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                    >
+                      <Store className="w-3.5 h-3.5" />
+                      <span>Panel de Registros</span>
+                    </button>
+                  )}
+                  {onGoToAdminPanel && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        onGoToAdminPanel();
+                      }}
+                      className="py-2 px-2.5 rounded-lg bg-[#1A1815] hover:bg-[#322C27] text-white font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                    >
+                      <LayoutDashboard className="w-3.5 h-3.5" />
+                      <span>Panel Admin</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Subtabs: Check-in express vs Ficha médica */}
             <div className="flex border-b border-[#E4DED4] text-xs font-medium">

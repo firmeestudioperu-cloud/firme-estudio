@@ -17,20 +17,32 @@ export const FloatingAdminButton: React.FC<FloatingAdminButtonProps> = ({
   activeTab,
   onSelectTab,
 }) => {
-  // Verificacion estricta de rol Staff: Solo 'owner_dev' y 'admin'
-  const isStaff = currentUser?.role === 'owner_dev' || currentUser?.role === 'admin';
+  // Verificación de rol Staff: 'owner_dev', 'admin' o 'receptionist'
+  const isStaff =
+    currentUser?.role === 'owner_dev' ||
+    currentUser?.role === 'admin' ||
+    currentUser?.role === 'receptionist';
   if (!isStaff) return null;
 
   const isOwnerDev = currentUser?.role === 'owner_dev';
+  const isAdmin = currentUser?.role === 'admin';
+  const isReceptionist = currentUser?.role === 'receptionist';
   const isAdminActive = activeTab === 'admin';
+  const isDeskActive = activeTab === 'registros-presencial';
+  const isHubActive = activeTab === 'staff-hub';
+  const isInStaffArea = isAdminActive || isDeskActive || isHubActive;
 
   const handleClick = () => {
-    if (isAdminActive) {
-      // Si ya esta dentro del panel admin, permite volver a la web publica
+    if (isInStaffArea) {
+      // Si ya está dentro de un espacio de staff, permite volver a la web pública
       onSelectTab('inicio');
     } else {
-      // Ingresar al panel administrativo
-      onSelectTab('admin');
+      // Si es recepcionista va directo al panel de registros, sino al Hub
+      if (isReceptionist) {
+        onSelectTab('registros-presencial');
+      } else {
+        onSelectTab('staff-hub');
+      }
     }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -45,19 +57,19 @@ export const FloatingAdminButton: React.FC<FloatingAdminButtonProps> = ({
         id="floating-admin-btn"
         onClick={handleClick}
         className={`group relative flex items-center gap-2.5 px-4.5 py-3 rounded-full shadow-2xl transition-all duration-300 hover:scale-105 active:scale-95 cursor-pointer border-2 ${
-          isAdminActive
+          isInStaffArea
             ? 'bg-[#B5654A] text-white border-white/40 hover:bg-[#9A5340]'
             : 'bg-[#1A1815] text-[#FAF8F5] border-[#B5654A] hover:border-[#D49581] hover:shadow-[#B5654A]/30'
         }`}
         title={
-          isAdminActive
-            ? 'Volver al Sitio Web Publico'
-            : `Abrir Panel de Administracion (${isOwnerDev ? 'Owner / Dev' : 'Administracion'})`
+          isInStaffArea
+            ? 'Volver al Sitio Web Público'
+            : `Abrir Portal de Personal (${isOwnerDev ? 'Owner / Dev' : 'Administración'})`
         }
       >
         {/* Indicador de Estado y Pulso */}
         <div className="relative flex items-center justify-center">
-          {isAdminActive ? (
+          {isInStaffArea ? (
             <ArrowLeft className="w-4 h-4 text-white transition-transform group-hover:-translate-x-0.5" />
           ) : (
             <>
@@ -79,24 +91,32 @@ export const FloatingAdminButton: React.FC<FloatingAdminButtonProps> = ({
         {/* Texto Principal */}
         <div className="flex flex-col items-start leading-none text-left">
           <span className="font-fraunces text-xs font-semibold tracking-wide flex items-center gap-1.5">
-            {isAdminActive ? 'Salir a la Web' : 'Panel Admin'}
+            {isInStaffArea
+              ? 'Salir a la Web'
+              : isDeskActive
+              ? 'Mostrador'
+              : isAdminActive
+              ? 'Panel Admin'
+              : 'Portal Staff'}
           </span>
           <span className="text-[9px] text-[#AFA79C] group-hover:text-[#DDD5C9] transition-colors mt-0.5 font-medium">
-            {isAdminActive ? 'Ver modo alumna' : currentUser?.name?.split(' ')[0] || 'Staff'}
+            {isInStaffArea ? 'Ver modo alumna' : currentUser?.name?.split(' ')[0] || 'Staff'}
           </span>
         </div>
 
         {/* Badge de Rol */}
         <span
           className={`text-[9px] uppercase font-bold px-2 py-0.5 rounded-full tracking-wider shadow-2xs ${
-            isAdminActive
+            isInStaffArea
               ? 'bg-white/20 text-white'
               : isOwnerDev
               ? 'bg-[#B5654A] text-white'
-              : 'bg-emerald-600 text-white'
+              : isAdmin
+              ? 'bg-emerald-600 text-white'
+              : 'bg-amber-700 text-white'
           }`}
         >
-          {isAdminActive ? 'Activo' : isOwnerDev ? 'Owner' : 'Admin'}
+          {isInStaffArea ? 'Activo' : isOwnerDev ? 'Owner' : isAdmin ? 'Admin' : 'Recepción'}
         </span>
       </button>
     </aside>

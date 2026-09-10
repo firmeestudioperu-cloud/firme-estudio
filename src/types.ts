@@ -4,7 +4,20 @@ export type DifficultyLevel = 'Principiante' | 'Intermedio' | 'Avanzado';
 
 export type ClassType = 'Reformer' | 'Mat' | 'Suspensión';
 
-export type MainTabType = 'inicio' | 'horarios' | 'mis-clases' | 'niveles' | 'membresias' | 'profesores' | 'metodo' | 'admin' | 'kiosco' | 'instructor';
+export type MainTabType =
+  | 'inicio'
+  | 'horarios'
+  | 'mis-clases'
+  | 'niveles'
+  | 'membresias'
+  | 'profesores'
+  | 'metodo'
+  | 'admin'
+  | 'registros-presencial'
+  | 'staff-hub'
+  | 'kiosco'
+  | 'instructor'
+  | 'registro';
 
 export type AdminSubTab =
   | 'dashboard'
@@ -104,7 +117,7 @@ export interface ClientProfile {
   documentType?: 'dni' | 'ce' | 'pasaporte';
   birthDate?: string;
   gender?: 'femenino' | 'masculino' | 'otro';
-  registrationMethod?: 'qr' | 'manual_smartfit' | 'whatsapp' | 'receptionist_desk';
+  registrationMethod?: 'qr' | 'manual_smartfit' | 'manual_web' | 'whatsapp' | 'receptionist_desk';
 }
 
 export type PaymentMethod =
@@ -237,7 +250,7 @@ export interface BookingModalData {
   waitlistPosition?: number;
 }
 
-export type UserRole = 'owner_dev' | 'admin' | 'instructor' | 'client';
+export type UserRole = 'owner_dev' | 'admin' | 'receptionist' | 'instructor' | 'client';
 
 export interface RoleDefinition {
   id: UserRole;
@@ -265,7 +278,7 @@ export const ROLE_DEFINITIONS: Record<UserRole, RoleDefinition> = {
     canManageCashRegister: true,
     canManageSchedule: true,
     canCheckInClients: true,
-    allowedViews: ['owner_dev', 'admin', 'instructor', 'client'],
+    allowedViews: ['owner_dev', 'admin', 'receptionist', 'instructor', 'client'],
   },
   admin: {
     id: 'admin',
@@ -278,7 +291,20 @@ export const ROLE_DEFINITIONS: Record<UserRole, RoleDefinition> = {
     canManageCashRegister: true,
     canManageSchedule: true,
     canCheckInClients: true,
-    allowedViews: ['admin', 'instructor', 'client'],
+    allowedViews: ['admin', 'receptionist', 'instructor', 'client'],
+  },
+  receptionist: {
+    id: 'receptionist',
+    name: 'Recepcionista de Mostrador',
+    description: 'Atención presencial en sede SJL: alta rápida de clientas, cobros (Yape/POS/Efectivo), check-in en vivo y caja rápida.',
+    badgeLabel: 'RECEPCIÓN',
+    canSwitchAccounts: false,
+    canAccessBackend: false,
+    canAccessAdminPanel: false,
+    canManageCashRegister: true,
+    canManageSchedule: false,
+    canCheckInClients: true,
+    allowedViews: ['receptionist', 'client'],
   },
   instructor: {
     id: 'instructor',
@@ -314,6 +340,14 @@ export function isOwner(role?: UserRole): boolean {
 
 export function isAdmin(role?: UserRole): boolean {
   return role === 'admin';
+}
+
+export function isReceptionist(role?: UserRole): boolean {
+  return role === 'receptionist';
+}
+
+export function isStaffRole(role?: UserRole): boolean {
+  return role === 'owner_dev' || role === 'admin' || role === 'receptionist';
 }
 
 export function isInstructor(role?: UserRole): boolean {
@@ -387,6 +421,18 @@ export const PREDEFINED_STAFF: StaffAccount[] = [
     description: 'Gestión Operativa: Clientes, Agenda, 8 Camas, Caja y WhatsApp',
     defaultPassword: 'firme2026',
   },
+  {
+    id: 'staff-recepcion',
+    name: 'Camila',
+    email: 'recepcion@firmestudio.pe',
+    role: 'receptionist',
+    roleTitle: 'Recepción & Mostrador SJL',
+    avatar: 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=120&auto=format&fit=crop&q=80',
+    phone: '+51 984 123 456',
+    dni: '73445566',
+    description: 'Atención Presencial: Altas express, Cobros en Mostrador y Check-in',
+    defaultPassword: 'firme2026',
+  },
 ];
 
 export function determineUserRole(
@@ -430,6 +476,17 @@ export function determineUserRole(
     normEmail === 'keyla@firmestudio.pe'
   ) {
     return { role: 'admin', roleTitle: 'Administración & Operaciones' };
+  }
+
+  // RECEPCIONISTA: Camila / Recepción (DNI 73445566)
+  if (
+    normDni === '73445566' ||
+    normName.includes('recepcion') ||
+    normEmail.includes('recepcion') ||
+    normName.includes('camila') ||
+    normEmail === 'recepcion@firmestudio.pe'
+  ) {
+    return { role: 'receptionist', roleTitle: 'Recepción & Mostrador SJL' };
   }
 
   // INSTRUCTOR: Instructora o Profesora
@@ -479,7 +536,7 @@ export interface AuthUser {
   documentType?: 'dni' | 'ce' | 'pasaporte';
   birthDate?: string;
   gender?: 'femenino' | 'masculino' | 'otro';
-  registrationMethod?: 'qr' | 'manual_smartfit' | 'whatsapp' | 'receptionist_desk';
+  registrationMethod?: 'qr' | 'manual_smartfit' | 'manual_web' | 'whatsapp' | 'receptionist_desk';
   planName?: string;
   creditsLeft?: number;
   totalAttended?: number;
@@ -489,6 +546,8 @@ export interface AuthUser {
   expNextLevel?: number;
   weeklyStreak?: number;
   unlockedBadges?: string[];
+  shareInLeaderboard?: boolean;
+  receiveMarketingUpdates?: boolean;
 }
 
 export interface ClientBookingFormData {

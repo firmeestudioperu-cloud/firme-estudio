@@ -22,9 +22,12 @@ import { PlanCheckoutModal } from './components/PlanCheckoutModal';
 import { StudentLevelModal } from './components/StudentLevelModal';
 import { StudentProgressTab } from './components/StudentProgressTab';
 import { AdminPanel } from './components/AdminPanel';
+import { StaffDestinationHub } from './components/StaffDestinationHub';
+import { ReceptionDeskPanel } from './components/ReceptionDeskPanel';
 import { ReceptionKioskModal } from './components/ReceptionKioskModal';
 import { ReceptionQrModal } from './components/ReceptionQrModal';
 import { BiomechanicsQuizModal } from './components/BiomechanicsQuizModal';
+import { QuickRegistrationLanding } from './components/QuickRegistrationLanding';
 import { AiAssistantWidget } from './components/AiAssistantWidget';
 import { studioApi } from './services/api';
 import { supabaseService } from './services/supabaseService';
@@ -339,6 +342,17 @@ export default function App() {
   const [bookingModalData, setBookingModalData] = useState<BookingModalData | null>(null);
   const [toast, setToast] = useState<{ title: string; message: string; isAlert?: boolean } | null>(null);
 
+  // Auto-apertura del modal de registro rápido en la web pública para visitas no autenticadas ("Aparece solo")
+  useEffect(() => {
+    if (!currentUser && !sessionStorage.getItem('firme_quick_auth_dismissed')) {
+      const timer = setTimeout(() => {
+        setAuthInitialModality('register');
+        setIsGoogleAuthOpen(true);
+      }, 1200);
+      return () => clearTimeout(timer);
+    }
+  }, [currentUser]);
+
   const handleGainExp = (amount: number, reason: string) => {
     const prevExp = currentUser?.exp ?? 1350;
     const prevLevel = currentUser?.level ?? 2;
@@ -518,7 +532,14 @@ export default function App() {
         });
       }
     } else {
-      sessionStorage.setItem('firme_admin_logged', 'true');
+      if (userWithExp.role === 'receptionist') {
+        sessionStorage.removeItem('firme_admin_logged');
+        sessionStorage.setItem('firme_staff_logged', 'true');
+        setActiveTab('registros-presencial');
+      } else {
+        sessionStorage.setItem('firme_admin_logged', 'true');
+        setActiveTab('staff-hub');
+      }
     }
     setToast({
       title: 'Sesión Iniciada Exitosamente',
@@ -591,6 +612,38 @@ export default function App() {
       const hash = window.location.hash.replace('#', '').toLowerCase();
       const pathname = window.location.pathname.toLowerCase();
 
+      // Rutas exclusivas para el panel presencial de mostrador
+      const isDeskRoute =
+        hash === 'mostrador' ||
+        hash === 'registros-presencial' ||
+        hash === 'recepcion' ||
+        hash === 'desk' ||
+        pathname === '/mostrador' ||
+        pathname === '/registros-presencial';
+
+      if (isDeskRoute) {
+        const savedUserStr = localStorage.getItem('firme_auth_user');
+        if (savedUserStr) {
+          try {
+            const parsed = JSON.parse(savedUserStr);
+            if (parsed.role === 'client') {
+              setActiveTab('inicio');
+              history.replaceState(null, '', window.location.pathname);
+              setToast({
+                title: 'Acceso Denegado',
+                message: 'El mostrador presencial es de uso exclusivo para el personal autorizado de FIRME STUDIO.',
+                isAlert: true,
+              });
+              return;
+            }
+          } catch (e) {
+            // ignore
+          }
+        }
+        setActiveTab('registros-presencial');
+        return;
+      }
+
       // Enlace único privado para el panel administrativo y login de staff
       const isStaffRoute =
         hash === 'acceso-staff' ||
@@ -613,7 +666,18 @@ export default function App() {
               history.replaceState(null, '', window.location.pathname);
               setToast({
                 title: 'Acceso Denegado',
-                message: 'Tu cuenta tiene perfil de Alumna/Cliente. El portal administrativo es exclusivo para el equipo de FIRME STUDIO (Valentino, Soni, Keyla).',
+                message: 'Tu cuenta tiene perfil de Alumna/Cliente. El portal administrativo es exclusivo para el equipo directivo de FIRME STUDIO (Valentino, Soni, Keyla).',
+                isAlert: true,
+              });
+              return;
+            }
+            if (parsed.role === 'receptionist') {
+              // BLOQUEO ESTRICTO: La recepcionista no puede ver el Panel Admin General
+              setActiveTab('registros-presencial');
+              history.replaceState(null, '', window.location.pathname + '#mostrador');
+              setToast({
+                title: 'Acceso Restringido al Admin General',
+                message: 'Hola Camila. Tu panel exclusivo de trabajo es el Mostrador Presencial. Las finanzas y configuración están reservadas para Administración y Dirección.',
                 isAlert: true,
               });
               return;
@@ -626,7 +690,18 @@ export default function App() {
         return;
       }
 
-      if (hash === 'registro' || hash === 'registro-smartfit') {
+      if (
+        hash === 'registro' ||
+        hash === 'registro-rapido' ||
+        hash === 'registro-alumna' ||
+        hash === 'alta' ||
+        pathname === '/registro'
+      ) {
+        setActiveTab('registro');
+        return;
+      }
+
+      if (hash === 'registro-smartfit') {
         setAuthInitialModality('manual');
         setIsGoogleAuthOpen(true);
         setAuthPurpose('crear tu cuenta en FIRME STUDIO');
@@ -650,7 +725,19 @@ export default function App() {
   }, []);
 
   const handleSelectTab = (tab: MainTabType) => {
-    if (tab === 'admin') {
+    if (tab === 'registro') {
+      setActiveTab('registro');
+      window.location.hash = 'registro';
+    } else if (tab === 'admin') {
+      if (currentUser?.role === 'receptionist') {
+        setActiveTab('registros-presencial');
+        setToast({
+          title: 'Acceso Restringido al Admin General',
+          message: 'Tu espacio asignado de trabajo es el Mostrador Presencial. El panel administrativo contiene información financiera y operativa confidencial.',
+          isAlert: true,
+        });
+        return;
+      }
       if (currentUser?.role === 'client') {
         setToast({
           title: 'Acceso Denegado',
@@ -663,7 +750,7 @@ export default function App() {
       window.location.hash = 'acceso-staff';
     } else {
       setActiveTab(tab);
-      const staffHashes = ['#admin', '#acceso-staff', '#staff-portal', '#staff', '#admin-login'];
+      const staffHashes = ['#admin', '#acceso-staff', '#staff-portal', '#staff', '#admin-login', '#mostrador', '#registros-presencial', '#registro'];
       if (staffHashes.includes(window.location.hash)) {
         history.replaceState(null, '', window.location.pathname);
       }
@@ -1330,10 +1417,86 @@ export default function App() {
   const alertClasses = classesList.filter((c) => alertClassIds.has(c.id));
 
   // -------------------------------------------------------------
+  // VISTA TOTALMENTE INDEPENDIENTE: ENLACE ÚNICO REGISTRO + QR
+  // -------------------------------------------------------------
+  if (activeTab === 'registro') {
+    return (
+      <QuickRegistrationLanding
+        onSuccess={(user) => {
+          handleGoogleAuthSuccess(user);
+          handleSelectTab('horarios');
+        }}
+        onExitToHome={() => handleSelectTab('inicio')}
+      />
+    );
+  }
+
+  // -------------------------------------------------------------
+  // VISTA TOTALMENTE INDEPENDIENTE: PORTAL STAFF / SELECCIÓN DE ESPACIOS
+  // -------------------------------------------------------------
+  if (activeTab === 'staff-hub') {
+    return (
+      <StaffDestinationHub
+        currentUser={currentUser}
+        onSelectDestination={handleSelectTab}
+        onLogout={handleLogout}
+      />
+    );
+  }
+
+  // -------------------------------------------------------------
+  // VISTA TOTALMENTE INDEPENDIENTE: PANEL DE REGISTROS PRESENCIAL
+  // -------------------------------------------------------------
+  if (activeTab === 'registros-presencial') {
+    return (
+      <ReceptionDeskPanel
+        currentUser={currentUser}
+        classes={classesList}
+        bookings={bookingsList}
+        clients={clientsList}
+        transactions={transactionsList}
+        cashRegister={cashRegister}
+        onAddClient={handleAddClient}
+        onUpdateClient={handleUpdateClient}
+        onAddTransaction={handleAddTransaction}
+        onCheckInBooking={handleCheckInBooking}
+        onAssignBed={handleAssignBed}
+        onUpdateBookingStatus={handleUpdateBookingStatus}
+        onAddManualBooking={handleAddManualBooking}
+        onSelectDestination={handleSelectTab}
+        onLogout={handleLogout}
+      />
+    );
+  }
+
+  // -------------------------------------------------------------
   // VISTA TOTALMENTE INDEPENDIENTE: PORTAL ADMIN / BACK-OFFICE
   // No comparte Header, ni Footer, ni elementos de la web pública de alumnos.
   // -------------------------------------------------------------
   if (activeTab === 'admin') {
+    // ESCUDO DE SEGURIDAD: Si una recepcionista intenta acceder a 'admin', renderizar únicamente el panel de recepción
+    if (currentUser?.role === 'receptionist') {
+      return (
+        <ReceptionDeskPanel
+          currentUser={currentUser}
+          classes={classesList}
+          bookings={bookingsList}
+          clients={clientsList}
+          transactions={transactionsList}
+          cashRegister={cashRegister}
+          onAddClient={handleAddClient}
+          onUpdateClient={handleUpdateClient}
+          onAddTransaction={handleAddTransaction}
+          onCheckInBooking={handleCheckInBooking}
+          onAssignBed={handleAssignBed}
+          onUpdateBookingStatus={handleUpdateBookingStatus}
+          onAddManualBooking={handleAddManualBooking}
+          onSelectDestination={handleSelectTab}
+          onLogout={handleLogout}
+        />
+      );
+    }
+
     return (
       <div className="min-h-screen bg-[#FAF8F5] text-[#1A1815] font-sans antialiased selection:bg-[#B5654A] selection:text-[#FAF8F5]">
         {/* Toast Notification para acciones administrativas */}
@@ -1407,6 +1570,8 @@ export default function App() {
           onUpdateClientCredits={handleUpdateClientCredits}
           onClearDemoData={handleClearDemoData}
           onOpenQrModal={() => setIsQrModalOpen(true)}
+          onGoToReceptionDesk={() => handleSelectTab('registros-presencial')}
+          onGoToStaffHub={() => handleSelectTab('staff-hub')}
         />
       </div>
     );
@@ -1756,6 +1921,18 @@ export default function App() {
           setIsCheckInModalOpen(false);
           setIsEditProfileOpen(true);
         }}
+        onGoToReceptionDesk={() => {
+          setIsCheckInModalOpen(false);
+          handleSelectTab('registros-presencial');
+        }}
+        onGoToAdminPanel={() => {
+          setIsCheckInModalOpen(false);
+          handleSelectTab('admin');
+        }}
+        onGoToStaffHub={() => {
+          setIsCheckInModalOpen(false);
+          handleSelectTab('staff-hub');
+        }}
       />
 
       {/* MODAL DE EDICION DE DATOS DEL PERFIL & SALUD */}
@@ -1766,13 +1943,14 @@ export default function App() {
         onSave={handleSaveProfile}
       />
 
-      {/* CENTRO UNIFICADO DE REGISTRO & ACCESO 4-EN-1 (QR, SMARTFIT, WHATSAPP, COUNTER) */}
+      {/* CENTRO UNIFICADO DE REGISTRO & ACCESO (GOOGLE AUTH + FORMULARIO BÁSICO) */}
       <GoogleAuthModal
         isOpen={isGoogleAuthOpen}
         onClose={() => {
           setIsGoogleAuthOpen(false);
           setPendingBookingAction(null);
           setAuthPurpose('');
+          sessionStorage.setItem('firme_quick_auth_dismissed', 'true');
         }}
         onSuccess={handleGoogleAuthSuccess}
         purpose={authPurpose}

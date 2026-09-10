@@ -14,8 +14,8 @@ const getEnvVar = (key: string): string => {
   return '';
 };
 
-const DEFAULT_URL = 'https://wcxwnbuwugzsedmkohmt.supabase.co';
-const DEFAULT_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndjeHduYnV3dWd6c2VkbWtvaG10Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg1Njc0MTAsImV4cCI6MjEwNDE0MzQxMH0.4Xzt5VWr31PFoLFas6Mj5TKWR-2EyJTXRNrV-CnvRSA';
+const DEFAULT_URL = 'https://tcotfpzymrjyvwrlnskf.supabase.co';
+const DEFAULT_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRjb3RmcHp5bXJqeXZ3cmxuc2tmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkwMDU3ODEsImV4cCI6MjEwNDU4MTc4MX0.PP-Jqrg8AXNAYp1TcFJcqUdxb_lQvB0-u0Gn4eKnYL0';
 
 const supabaseUrl = getEnvVar('VITE_SUPABASE_URL') || getEnvVar('SUPABASE_URL') || DEFAULT_URL;
 const supabaseAnonKey = getEnvVar('VITE_SUPABASE_ANON_KEY') || getEnvVar('SUPABASE_ANON_KEY') || DEFAULT_KEY;

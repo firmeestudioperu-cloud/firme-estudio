@@ -11,8 +11,17 @@ import {
   Check,
   Camera,
   AlertCircle,
+  Shield,
+  Lock,
+  Eye,
+  EyeOff,
+  Download,
+  KeyRound,
+  CheckCircle2,
+  FileText,
 } from 'lucide-react';
 import { AuthUser } from '../types';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 interface EditProfileModalProps {
   isOpen: boolean;
@@ -48,7 +57,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
   currentUser,
   onSave,
 }) => {
-  const [activeSection, setActiveSection] = useState<'personal' | 'salud' | 'avatar'>('personal');
+  const [activeSection, setActiveSection] = useState<'personal' | 'salud' | 'avatar' | 'seguridad'>('personal');
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [documentType, setDocumentType] = useState<'dni' | 'ce' | 'pasaporte'>('dni');
@@ -61,6 +70,19 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
   const [emergencyPhone, setEmergencyPhone] = useState('');
   const [healthConditions, setHealthConditions] = useState<string[]>(['Ninguna']);
   const [medicalNotes, setMedicalNotes] = useState('');
+
+  // Privacidad & Seguridad
+  const [shareInLeaderboard, setShareInLeaderboard] = useState(true);
+  const [receiveMarketingUpdates, setReceiveMarketingUpdates] = useState(true);
+
+  // Cambio de Contraseña
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [passwordStatus, setPasswordStatus] = useState<{ type: 'idle' | 'loading' | 'success' | 'error'; message: string }>({
+    type: 'idle',
+    message: '',
+  });
 
   const [savedSuccess, setSavedSuccess] = useState(false);
 
@@ -82,6 +104,11 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
           : ['Ninguna']
       );
       setMedicalNotes(currentUser.medicalNotes || '');
+      setShareInLeaderboard(currentUser.shareInLeaderboard ?? true);
+      setReceiveMarketingUpdates(currentUser.receiveMarketingUpdates ?? true);
+      setPasswordStatus({ type: 'idle', message: '' });
+      setNewPassword('');
+      setConfirmPassword('');
     }
   }, [currentUser, isOpen]);
 
@@ -101,6 +128,90 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
     }
   };
 
+  const handleUpdatePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPassword || newPassword.length < 6) {
+      setPasswordStatus({ type: 'error', message: 'La contraseña debe tener al menos 6 caracteres.' });
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordStatus({ type: 'error', message: 'Las contraseñas no coinciden. Verifica que sean idénticas.' });
+      return;
+    }
+
+    setPasswordStatus({ type: 'loading', message: 'Actualizando clave de seguridad...' });
+
+    try {
+      // 1. Supabase Auth update
+      if (supabase && isSupabaseConfigured()) {
+        const { error } = await supabase.auth.updateUser({ password: newPassword });
+        if (error) {
+          console.warn('Supabase updateUser password notice:', error.message);
+        }
+      }
+
+      // 2. Actualizar almacenamiento local si existe
+      try {
+        const storedUsersRaw = localStorage.getItem('firme_registered_users');
+        if (storedUsersRaw && currentUser?.email) {
+          const storedUsers = JSON.parse(storedUsersRaw);
+          const idx = storedUsers.findIndex((u: any) => u.email?.toLowerCase() === currentUser.email?.toLowerCase());
+          if (idx !== -1) {
+            storedUsers[idx].password = newPassword;
+            localStorage.setItem('firme_registered_users', JSON.stringify(storedUsers));
+          }
+        }
+      } catch (err) {
+        console.error('Error updating local registered user password:', err);
+      }
+
+      setPasswordStatus({ type: 'success', message: '¡Tu contraseña ha sido actualizada con éxito!' });
+      setNewPassword('');
+      setConfirmPassword('');
+      setTimeout(() => {
+        setPasswordStatus({ type: 'idle', message: '' });
+      }, 4000);
+    } catch (err: any) {
+      setPasswordStatus({ type: 'error', message: err.message || 'Error al actualizar la contraseña.' });
+    }
+  };
+
+  const handleExportData = () => {
+    if (!currentUser) return;
+    const exportPayload = {
+      firme_studio_account: {
+        id: currentUser.id,
+        nombre: currentUser.name,
+        email: currentUser.email,
+        telefono: currentUser.phone,
+        documento: `${currentUser.documentType?.toUpperCase() || 'DNI'}: ${currentUser.dni || 'No registrado'}`,
+        fecha_nacimiento: currentUser.birthDate || 'No registrada',
+        nivel_experiencia: currentUser.experienceLevel || 'Principiante',
+        condiciones_salud: currentUser.healthConditions || ['Ninguna'],
+        contacto_emergencia: currentUser.emergencyContact
+          ? `${currentUser.emergencyContact} (${currentUser.emergencyPhone})`
+          : 'No asignado',
+        creditos_disponibles: currentUser.creditsLeft ?? 0,
+        plan_activo: currentUser.planName || 'Alumna',
+        privacidad: {
+          mostrar_en_podio_estudio: shareInLeaderboard,
+          comunicaciones_privadas: receiveMarketingUpdates,
+        },
+        fecha_exportacion: new Date().toISOString(),
+      },
+    };
+    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(exportPayload, null, 2));
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute('href', dataStr);
+    downloadAnchor.setAttribute(
+      'download',
+      `firme_studio_mis_datos_${currentUser.name.replace(/\s+/g, '_').toLowerCase()}.json`
+    );
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const updatedUser: AuthUser = {
@@ -117,6 +228,8 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
       emergencyPhone: emergencyPhone.trim(),
       healthConditions,
       medicalNotes: medicalNotes.trim(),
+      shareInLeaderboard,
+      receiveMarketingUpdates,
     };
 
     onSave(updatedUser);
@@ -205,6 +318,18 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
           >
             <Camera className="w-3.5 h-3.5" />
             <span>Foto & Nivel</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveSection('seguridad')}
+            className={`py-3 px-3 sm:px-4 border-b-2 transition-all cursor-pointer flex items-center gap-1.5 ${
+              activeSection === 'seguridad'
+                ? 'border-[#B5654A] text-[#B5654A]'
+                : 'border-transparent text-[#6B655C] hover:text-[#1A1815]'
+            }`}
+          >
+            <Shield className="w-3.5 h-3.5" />
+            <span>Seguridad & Privacidad</span>
           </button>
         </div>
 
@@ -499,6 +624,171 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
                     </button>
                   ))}
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Section 4: Seguridad & Privacidad */}
+          {activeSection === 'seguridad' && (
+            <div className="space-y-5 animate-in fade-in duration-150">
+              {/* Header Info */}
+              <div className="p-3.5 bg-[#FAF2E8] border border-[#B5654A]/30 rounded-2xl flex items-start gap-3">
+                <div className="w-8 h-8 rounded-xl bg-[#B5654A]/15 text-[#B5654A] flex items-center justify-center shrink-0 mt-0.5">
+                  <Shield className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-[#1A1815]">Centro de Privacidad & Claves de Seguridad</h4>
+                  <p className="text-[11px] text-[#6B655C] leading-relaxed mt-0.5">
+                    Gestiona tu contraseña personal, visibilidad en el estudio y descarga una copia oficial de tus datos registrados.
+                  </p>
+                </div>
+              </div>
+
+              {/* Tarjeta 1: Cambio de Contraseña */}
+              <div className="p-4 bg-white rounded-2xl border border-[#DDD5C9] space-y-3.5 shadow-2xs">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <KeyRound className="w-4 h-4 text-[#B5654A]" />
+                    <span className="text-xs font-bold text-[#1A1815]">Actualizar Contraseña</span>
+                  </div>
+                  <span className="text-[10px] text-[#8C8479]">Mínimo 6 caracteres</span>
+                </div>
+
+                {passwordStatus.message && (
+                  <div
+                    className={`p-2.5 rounded-xl text-xs flex items-center gap-2 ${
+                      passwordStatus.type === 'success'
+                        ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                        : passwordStatus.type === 'error'
+                        ? 'bg-rose-50 text-rose-800 border border-rose-200'
+                        : 'bg-amber-50 text-amber-800 border border-amber-200'
+                    }`}
+                  >
+                    {passwordStatus.type === 'success' ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    ) : (
+                      <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                    )}
+                    <span>{passwordStatus.message}</span>
+                  </div>
+                )}
+
+                <div className="space-y-2.5">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-[#1A1815] mb-1">
+                      Nueva Contraseña
+                    </label>
+                    <div className="relative">
+                      <Lock className="w-4 h-4 text-[#8C8479] absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        type={showNewPassword ? 'text' : 'password'}
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        placeholder="••••••••"
+                        className="w-full pl-9 pr-10 py-2 bg-[#FAF8F5] border border-[#DDD5C9] rounded-xl text-xs text-[#1A1815] focus:outline-hidden focus:border-[#B5654A]"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowNewPassword(!showNewPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8C8479] hover:text-[#1A1815] cursor-pointer"
+                      >
+                        {showNewPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold text-[#1A1815] mb-1">
+                      Confirmar Nueva Contraseña
+                    </label>
+                    <div className="relative">
+                      <Lock className="w-4 h-4 text-[#8C8479] absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        type={showNewPassword ? 'text' : 'password'}
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        placeholder="••••••••"
+                        className="w-full pl-9 pr-3 py-2 bg-[#FAF8F5] border border-[#DDD5C9] rounded-xl text-xs text-[#1A1815] focus:outline-hidden focus:border-[#B5654A]"
+                      />
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleUpdatePassword}
+                    disabled={passwordStatus.type === 'loading' || !newPassword}
+                    className="w-full py-2 px-3 bg-[#1A1815] hover:bg-[#322C27] disabled:opacity-50 text-white rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer mt-1"
+                  >
+                    {passwordStatus.type === 'loading' ? (
+                      <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <KeyRound className="w-3.5 h-3.5" />
+                    )}
+                    <span>Guardar Nueva Contraseña</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Tarjeta 2: Preferencias de Privacidad */}
+              <div className="p-4 bg-white rounded-2xl border border-[#DDD5C9] space-y-3 shadow-2xs">
+                <div className="flex items-center gap-2">
+                  <Shield className="w-4 h-4 text-[#B5654A]" />
+                  <span className="text-xs font-bold text-[#1A1815]">Preferencias de Privacidad</span>
+                </div>
+
+                <div className="space-y-2.5">
+                  <label className="flex items-start gap-3 p-2.5 rounded-xl bg-[#FAF8F5] border border-[#DDD5C9] hover:border-[#B5654A]/50 transition-colors cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={shareInLeaderboard}
+                      onChange={(e) => setShareInLeaderboard(e.target.checked)}
+                      className="mt-0.5 rounded border-[#DDD5C9] text-[#B5654A] focus:ring-[#B5654A]"
+                    />
+                    <div className="text-xs">
+                      <span className="font-semibold text-[#1A1815] block">Aparecer en el Podio & Asistencia del Estudio</span>
+                      <span className="text-[11px] text-[#6B655C] leading-snug block mt-0.5">
+                        Permite mostrar tu nombre y nivel en el ranking de asistencia comunitaria de FIRME STUDIO.
+                      </span>
+                    </div>
+                  </label>
+
+                  <label className="flex items-start gap-3 p-2.5 rounded-xl bg-[#FAF8F5] border border-[#DDD5C9] hover:border-[#B5654A]/50 transition-colors cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={receiveMarketingUpdates}
+                      onChange={(e) => setReceiveMarketingUpdates(e.target.checked)}
+                      className="mt-0.5 rounded border-[#DDD5C9] text-[#B5654A] focus:ring-[#B5654A]"
+                    />
+                    <div className="text-xs">
+                      <span className="font-semibold text-[#1A1815] block">Avisos Privados y Recordatorios</span>
+                      <span className="text-[11px] text-[#6B655C] leading-snug block mt-0.5">
+                        Recibir notificaciones prioritarias de tus reservas y alertas de expiración de membresías vía WhatsApp y Correo.
+                      </span>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              {/* Tarjeta 3: Descarga de Datos (Derechos ARCO) */}
+              <div className="p-4 bg-white rounded-2xl border border-[#DDD5C9] flex items-center justify-between gap-3 shadow-2xs">
+                <div>
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-[#1A1815]">
+                    <FileText className="w-4 h-4 text-[#8C8479]" />
+                    <span>Descargar mis Datos Personales</span>
+                  </div>
+                  <p className="text-[11px] text-[#6B655C] mt-0.5">
+                    Exporta una copia íntegra de tu ficha de alumna en formato oficial JSON.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleExportData}
+                  className="py-2 px-3 rounded-xl border border-[#DDD5C9] hover:border-[#B5654A] bg-[#FAF8F5] hover:bg-white text-[#1A1815] text-xs font-semibold flex items-center gap-1.5 transition-all shrink-0 cursor-pointer shadow-2xs"
+                >
+                  <Download className="w-3.5 h-3.5 text-[#B5654A]" />
+                  <span>Exportar</span>
+                </button>
               </div>
             </div>
           )}

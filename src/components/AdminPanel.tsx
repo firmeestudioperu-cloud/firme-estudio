@@ -34,6 +34,7 @@ import {
   QrCode,
   Trash2,
   Image as ImageIcon,
+  Store,
 } from 'lucide-react';
 import {
   ClassSession,
@@ -104,6 +105,8 @@ interface AdminPanelProps {
   onClearDemoData?: () => void;
   initialSubTab?: AdminSubTab;
   onOpenQrModal?: () => void;
+  onGoToReceptionDesk?: () => void;
+  onGoToStaffHub?: () => void;
 }
 
 interface ErrorBoundaryProps {
@@ -206,12 +209,17 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   onClearDemoData,
   initialSubTab,
   onOpenQrModal,
+  onGoToReceptionDesk,
+  onGoToStaffHub,
 }) => {
   const isOwnerDev = currentUser?.role === 'owner_dev';
-  const isStaff = currentUser?.role === 'owner_dev' || currentUser?.role === 'admin';
+  const isAdmin = currentUser?.role === 'admin';
+  const isReceptionist = currentUser?.role === 'receptionist';
+  const isStaff = isOwnerDev || isAdmin;
 
-  // Authentication state
+  // Authentication state (strict: receptionist can never authenticate as admin)
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    if (isReceptionist) return false;
     if (currentUser?.role === 'owner_dev' || currentUser?.role === 'admin') {
       return true;
     }
@@ -367,6 +375,77 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setNewKeyInput('');
     showNotification('Clave de acceso de administrador actualizada');
   };
+
+  // -------------------------------------------------------------
+  // ESCUDO DE SEGURIDAD ESTRICTO: RECEPCIONISTA BLOQUEADA DE ADMIN GENERAL
+  // -------------------------------------------------------------
+  if (isReceptionist) {
+    return (
+      <div className="min-h-screen flex flex-col bg-[#141210] text-[#FAF8F5]">
+        <header className="w-full bg-[#1A1815] border-b border-[#2C2723] px-4 sm:px-8 py-3.5 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-full bg-[#FAF8F5] p-0.5 border border-[#B5654A] flex items-center justify-center shrink-0">
+              <img
+                src="/firme-studio-logo.svg"
+                alt="FIRME STUDIO"
+                className="w-full h-full object-contain rounded-full"
+              />
+            </div>
+            <div>
+              <span className="text-xs font-semibold tracking-wider text-[#FAF8F5] block">
+                FIRME STUDIO · Control de Acceso
+              </span>
+              <span className="text-[10px] text-[#B5654A] font-medium">
+                Panel Administrativo General Protegido (SJL)
+              </span>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onExitToPublic}
+            className="px-3.5 py-1.5 text-xs font-medium text-[#D8D2C8] hover:text-white bg-[#26221E] hover:bg-[#322C27] border border-[#3C3630] rounded-lg transition-colors cursor-pointer"
+          >
+            ← Volver a la Web
+          </button>
+        </header>
+
+        <div className="flex-1 flex items-center justify-center py-12 px-4 sm:px-6 bg-[#141210]">
+          <div className="max-w-md w-full bg-[#FAF8F5] text-[#1A1815] border border-[#E4DED4] rounded-2xl p-8 shadow-2xl text-center space-y-5">
+            <div className="w-16 h-16 rounded-2xl bg-amber-100 text-amber-800 flex items-center justify-center mx-auto border border-amber-300">
+              <Lock className="w-8 h-8 text-amber-700" />
+            </div>
+            <div>
+              <h2 className="font-fraunces text-2xl font-bold text-[#1A1815]">Acceso Restringido al Admin General</h2>
+              <p className="text-xs text-[#6B655C] mt-2 leading-relaxed">
+                Hola, <strong>{currentUser?.name || 'Camila'}</strong>. El Panel Admin General (finanzas, reportes de facturación, egresos y configuración de sistema) es de acceso exclusivo para Owner y Administradoras.
+              </p>
+            </div>
+            <div className="p-4 bg-[#FAF2E8] border border-[#B5654A]/30 rounded-xl text-left text-xs space-y-1">
+              <div className="font-bold text-[#B5654A]">Tu espacio de trabajo autorizado:</div>
+              <div className="text-[#6B655C]">Mostrador Presencial: Altas express, Cobro Yape/POS y Check-in de Camas 1-8.</div>
+            </div>
+            <div className="pt-2 flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={onGoToReceptionDesk}
+                className="w-full py-3 px-4 rounded-xl bg-[#B5654A] hover:bg-[#9A5340] text-white text-xs font-bold shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <Store className="w-4 h-4" />
+                <span>Ir a mi Mostrador Presencial</span>
+              </button>
+              <button
+                type="button"
+                onClick={onExitToPublic}
+                className="w-full py-2 px-4 rounded-xl bg-[#E4DED4] hover:bg-[#DDD5C9] text-[#1A1815] text-xs font-semibold transition-colors cursor-pointer"
+              >
+                Ir a la Web Pública
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // -------------------------------------------------------------
   // VIEW 1: GATE / LOGIN SCREEN (PROTECTED)
@@ -798,6 +877,25 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
         {/* Sidebar Navigation Links (Scrollable) */}
         <nav className="flex-1 overflow-y-auto px-3.5 py-4 space-y-6 scrollbar-thin scrollbar-thumb-zinc-800">
+          {/* Direct link to Reception Desk Panel */}
+          {onGoToReceptionDesk && (
+            <div className="pb-2 border-b border-[#2C2723]/60">
+              <button
+                type="button"
+                onClick={onGoToReceptionDesk}
+                className="w-full py-2.5 px-3 rounded-xl bg-[#B5654A] hover:bg-[#9A5340] text-white text-xs font-bold flex items-center justify-between transition-all shadow-md cursor-pointer group"
+              >
+                <span className="flex items-center gap-2">
+                  <Store className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                  <span>Panel de Registros</span>
+                </span>
+                <span className="text-[9px] bg-white/20 px-1.5 py-0.5 rounded-md uppercase font-mono">
+                  Presencial
+                </span>
+              </button>
+            </div>
+          )}
+
           {NAV_GROUPS.map((group, gIdx) => (
             <div key={gIdx} className="space-y-1">
               <div className="px-3 pb-1 text-[10px] font-bold uppercase tracking-widest text-[#8C8479]">
@@ -922,6 +1020,33 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
           {/* Top Bar Contextual Badges & Shortcuts */}
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            {/* Quick button to Reception Desk Panel */}
+            {onGoToReceptionDesk && (
+              <button
+                type="button"
+                onClick={onGoToReceptionDesk}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#B5654A] hover:bg-[#9A5340] text-white text-xs font-bold transition-all shadow-xs cursor-pointer hover:shadow-md"
+                title="Ir al Panel de Registros Presencial (Atención Counter SJL)"
+              >
+                <Store className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">⚡ Panel de Registros</span>
+                <span className="sm:hidden">⚡ Registros</span>
+              </button>
+            )}
+
+            {/* Hub Selector */}
+            {onGoToStaffHub && (
+              <button
+                type="button"
+                onClick={onGoToStaffHub}
+                className="hidden xl:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white border border-[#DDD5C9] text-xs font-semibold text-[#6B655C] hover:text-[#1A1815] transition-colors cursor-pointer"
+                title="Volver a la pantalla de selección de espacios de trabajo"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-[#B5654A]" />
+                <span>Hub</span>
+              </button>
+            )}
+
             {/* Cash register quick status */}
             <button
               type="button"

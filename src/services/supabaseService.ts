@@ -381,7 +381,7 @@ export const supabaseService = {
       emergencyContact?: string;
       emergencyPhone?: string;
       medicalNotes?: string;
-      registrationMethod?: 'qr' | 'manual_smartfit' | 'whatsapp' | 'receptionist_desk';
+      registrationMethod?: 'qr' | 'manual_smartfit' | 'manual_web' | 'whatsapp' | 'receptionist_desk';
       planName?: string;
       creditsLeft?: number;
     }
