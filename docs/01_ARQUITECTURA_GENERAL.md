@@ -83,3 +83,14 @@ ode dist/server.cjs).
 pm run lint: Ejecuta el compilador de TypeScript (	sc --noEmit) para validar tipado estricto.
 * 
 pm run preview: Previsualiza la compilación de producción.
+
+---
+
+## 6. Sistema de Diseño Visual y Estética Boutique (Actualización)
+
+Para preservar la imagen de marca de alta gama y evitar la saturación cognitiva del usuario, la interfaz se rige por los siguientes principios minimalistas:
+
+1. **Fotografía como Protagonista:** Las salas de Reformer Allegro 2 y los productos de boutique se presentan de forma limpia, sin marcos pesados ni insignias superpuestas que tapen las imágenes.
+2. **Jerarquía Tipográfica Serena:** Empleo de la tipografía serif *Fraunces* para encabezados y sans-serif *Inter* para lectura ligera. Textos concisos y directos (máximo 2 líneas en subtítulos).
+3. **Eliminación de Cajas Redundantes:** Se eliminan cuadros de navegación duplicados y badges tipo SaaS (estrellas masivas, contadores repetidos, botones discordantes). La paleta se mantiene estricta en tonos Arena (#FAF8F5), Negro Mate (#1A1815) y Terracota (#B5654A).
+4. **Espacio Negativo (Breathing Room):** Márgenes amplios y transiciones fluidas que transmiten la atmósfera de calma y concentración propia de una sesión de Pilates.

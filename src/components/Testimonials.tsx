@@ -55,76 +55,45 @@ export const Testimonials: React.FC = () => {
         
         {/* Section Header */}
         <div className="text-center max-w-2xl mx-auto mb-12 sm:mb-16">
-          <div className="inline-flex items-center gap-1.5 bg-[#FAF8F5] border border-[#E4DED4] px-3.5 py-1.5 rounded-full mb-3 shadow-2xs">
-            <div className="flex text-amber-500">
-              {[...Array(5)].map((_, i) => (
-                <Star key={i} className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-              ))}
-            </div>
-            <span className="text-xs font-bold text-[#1A1815]">4.98 / 5.0</span>
-            <span className="text-[11px] text-[#6B655C]">· +320 reseñas verificadas</span>
-          </div>
-
+          <span className="text-xs font-semibold tracking-widest uppercase text-[#B5654A] block mb-2">
+            Experiencias en el Estudio
+          </span>
           <h2 className="font-fraunces text-2xl sm:text-3xl md:text-4xl text-[#1A1815] tracking-tight">
             Historias que inspiran constancia
           </h2>
-          <p className="mt-3 text-[#6B655C] text-sm sm:text-base leading-relaxed">
-            Nuestros alumnos comparten cómo el método Reformer transformó su postura, fuerza central y bienestar diario.
+          <p className="mt-2.5 text-[#6B655C] text-sm sm:text-base leading-relaxed">
+            La transformación postural y el bienestar cotidiano contados por nuestras alumnas.
           </p>
         </div>
 
-        {/* Testimonials Container (Horizontal snap on mobile, 3-col grid on desktop) */}
-        <div className="flex overflow-x-auto snap-x snap-mandatory gap-4 pb-4 -mx-4 px-4 scrollbar-none md:grid md:grid-cols-3 md:gap-6 lg:gap-8 md:overflow-visible md:pb-0 md:mx-0 md:px-0">
+        {/* Testimonials Container (Clean editorial cards) */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8">
           {TESTIMONIALS_DATA.map((t) => (
             <div
               key={t.id}
-              className="w-[85vw] max-w-sm shrink-0 snap-center md:w-auto bg-[#FAF8F5] border border-[#E4DED4] rounded-2xl p-5 sm:p-7 flex flex-col justify-between transition-all duration-300 hover:shadow-md hover:border-[#B5654A]/40 relative group"
+              className="bg-[#FAF8F5] border border-[#E4DED4] rounded-xl p-6 sm:p-7 flex flex-col justify-between transition-all duration-300 hover:border-[#B5654A]/50 shadow-2xs"
             >
-              {/* Quote badge & Stars */}
               <div>
-                <div className="flex items-center justify-between mb-3 sm:mb-4">
-                  <div className="flex text-amber-500">
-                    {[...Array(t.rating)].map((_, i) => (
-                      <Star key={i} className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                    ))}
-                  </div>
-                  <span className="text-[10px] bg-[#EDF5F0] text-[#245E39] font-bold px-2 py-0.5 rounded-full border border-[#C5DEC9] flex items-center gap-1">
-                    <CheckCircle2 className="w-3 h-3" />
-                    {t.classesCount} clases
-                  </span>
-                </div>
-
-                {/* Target objective pill */}
-                <div className="mb-2.5 sm:mb-3">
-                  <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#B5654A] bg-[#B5654A]/10 px-2.5 py-1 rounded-md">
-                    <Target className="w-3 h-3 shrink-0" />
-                    {t.goal}
-                  </span>
-                </div>
-
-                {/* Quote text */}
-                <p className="text-xs sm:text-sm text-[#1A1815] leading-relaxed mb-5 sm:mb-6 font-normal italic">
+                {/* Clean Quote Text */}
+                <p className="text-sm text-[#1A1815] leading-relaxed mb-6 font-normal italic">
                   "{t.quote}"
                 </p>
               </div>
 
               {/* Student Footer Card */}
-              <div className="flex items-center space-x-3.5 pt-3.5 sm:pt-4 border-t border-[#E4DED4]/80">
+              <div className="flex items-center space-x-3 pt-4 border-t border-[#E4DED4]/60">
                 <img
                   src={t.avatar}
                   alt={t.name}
-                  className="w-10 h-10 sm:w-11 sm:h-11 rounded-full object-cover border border-[#E4DED4] shadow-xs shrink-0"
+                  className="w-10 h-10 rounded-full object-cover border border-[#E4DED4] shrink-0"
                 />
 
                 <div className="min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <h3 className="font-fraunces text-sm font-medium text-[#1A1815] truncate">
-                      {t.name}
-                    </h3>
-                    <ShieldCheck className="w-3.5 h-3.5 text-[#B5654A] shrink-0" title="Perfil verificado" />
-                  </div>
-                  <span className="text-[11px] text-[#6B655C] block truncate">
-                    {t.duration}
+                  <h3 className="font-fraunces text-sm font-medium text-[#1A1815] truncate">
+                    {t.name}
+                  </h3>
+                  <span className="text-xs text-[#6B655C] block truncate">
+                    {t.goal} · {t.classesCount} clases
                   </span>
                 </div>
               </div>

@@ -202,78 +202,58 @@ export const BoutiqueSection: React.FC<BoutiqueSectionProps> = ({
           </div>
         </div>
 
-        {/* 4 Products Grid (2 cols mobile, 4 cols desktop) */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
+        {/* 4 Products Grid (Editorial clean presentation) */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
           {BOUTIQUE_PRODUCTS.map((prod) => {
             return (
               <div
                 key={prod.id}
-                className="bg-[#FAF8F5] border border-[#E4DED4] rounded-xl sm:rounded-2xl overflow-hidden flex flex-col justify-between transition-all duration-300 hover:shadow-lg hover:border-[#B5654A]/50 group"
+                className="bg-[#FAF8F5] border border-[#E4DED4] rounded-xl overflow-hidden flex flex-col justify-between transition-all duration-300 hover:border-[#B5654A]/50 hover:shadow-sm group"
               >
                 <div>
                   {/* Product Image Frame */}
-                  <div className="w-full aspect-square sm:aspect-[4/3] bg-[#E4DED4] overflow-hidden relative">
+                  <div className="w-full aspect-square bg-[#E4DED4] overflow-hidden relative">
                     <img
                       src={prod.image}
                       alt={prod.name}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out"
                     />
                     {prod.tag && (
-                      <div className="absolute top-2 left-2 sm:top-3 sm:left-3 bg-[#B5654A] text-[#FAF8F5] text-[9px] sm:text-[10px] font-semibold tracking-wide uppercase px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full shadow-xs">
+                      <div className="absolute top-2.5 left-2.5 bg-[#B5654A] text-[#FAF8F5] text-[9px] font-semibold tracking-wide uppercase px-2 py-0.5 rounded-md">
                         {prod.tag}
                       </div>
                     )}
-                    <div className="absolute top-2 right-2 sm:top-3 sm:right-3 bg-[#1A1815]/85 backdrop-blur-xs text-[#FAF8F5] text-[9px] sm:text-[10px] font-medium px-2 py-0.5 rounded-full flex items-center gap-1">
-                      <Star className="w-2.5 h-2.5 sm:w-3 sm:h-3 fill-amber-400 text-amber-400" />
-                      <span>{prod.expCost} EXP</span>
-                    </div>
                   </div>
 
-                  {/* Product Info */}
-                  <div className="p-3 sm:p-5">
-                    <span className="text-[9px] sm:text-[11px] font-semibold uppercase tracking-wider text-[#B5654A] block mb-1">
+                  {/* Product Info (Minimal) */}
+                  <div className="p-3.5 sm:p-5">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-[#B5654A] block mb-1">
                       {prod.category}
                     </span>
-                    <h3 className="font-fraunces text-xs sm:text-lg text-[#1A1815] font-medium leading-tight sm:leading-snug mb-1 sm:mb-2 line-clamp-2">
+                    <h3 className="font-fraunces text-sm sm:text-base text-[#1A1815] font-medium leading-snug line-clamp-2">
                       {prod.name}
                     </h3>
-                    <p className="hidden sm:block text-xs text-[#6B655C] leading-relaxed mb-4 line-clamp-2">
-                      {prod.description}
-                    </p>
-
-                    <ul className="hidden sm:block space-y-1.5 mb-4 text-[11px] text-[#6B655C]">
-                      {prod.features.slice(0, 2).map((feat, idx) => (
-                        <li key={idx} className="flex items-center gap-1.5">
-                          <Check className="w-3 h-3 text-[#B5654A] shrink-0" />
-                          <span>{feat}</span>
-                        </li>
-                      ))}
-                    </ul>
                   </div>
                 </div>
 
                 {/* Price & Action */}
-                <div className="p-3 sm:p-5 pt-0 border-t border-[#E4DED4]/60 mt-auto">
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pt-2.5 sm:pt-3">
+                <div className="p-3.5 sm:p-5 pt-0 border-t border-[#E4DED4]/60 mt-auto">
+                  <div className="flex items-center justify-between gap-2 pt-3">
                     <div>
-                      <span className="text-[9px] sm:text-[10px] text-[#6B655C] block">Precio / Canje:</span>
-                      <div className="flex items-baseline gap-1 sm:gap-1.5">
-                        <span className="font-fraunces text-sm sm:text-lg font-bold text-[#1A1815]">
-                          {prod.price}
-                        </span>
-                        <span className="text-[10px] sm:text-[11px] text-[#B5654A] font-semibold">
-                          ó {prod.expCost} pts
-                        </span>
-                      </div>
+                      <span className="font-fraunces text-base sm:text-lg font-bold text-[#1A1815]">
+                        {prod.price}
+                      </span>
+                      <span className="block text-[10px] sm:text-[11px] text-[#B5654A] font-medium">
+                        ó {prod.expCost} EXP
+                      </span>
                     </div>
 
                     <button
                       type="button"
                       onClick={() => handleOpenOrder(prod)}
-                      className="w-full sm:w-auto bg-[#1A1815] hover:bg-[#B5654A] text-white text-[11px] sm:text-xs font-medium px-2.5 py-1.5 sm:px-3.5 sm:py-2 rounded-lg transition-colors shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                      className="bg-[#1A1815] hover:bg-[#B5654A] text-[#FAF8F5] text-xs font-medium px-3.5 py-2 rounded-lg transition-colors cursor-pointer"
                     >
-                      <ShoppingBag className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-                      <span>Pedir</span>
+                      Adquirir
                     </button>
                   </div>
                 </div>

@@ -155,45 +155,12 @@ export const FaqSection: React.FC<FaqSectionProps> = ({ onOpenWhatsApp }) => {
 
                 {isOpen && (
                   <div className="px-5 sm:px-6 pb-5 pt-1 text-xs sm:text-sm text-[#6B655C] leading-relaxed border-t border-[#E4DED4]/50 animate-in fade-in duration-150">
-                    <p className="mb-3">{faq.answer}</p>
-                    {faq.highlight && (
-                      <div className="inline-flex items-center gap-2 bg-[#F1ECE5] px-3 py-1.5 rounded-lg border border-[#E4DED4] text-[#B5654A] text-xs font-medium">
-                        <Sparkles className="w-3.5 h-3.5 shrink-0" />
-                        <span>{faq.highlight}</span>
-                      </div>
-                    )}
+                    <p>{faq.answer}</p>
                   </div>
                 )}
               </div>
             );
           })}
-        </div>
-
-        {/* WhatsApp Help Banner */}
-        <div className="mt-12 bg-[#F1ECE5] border border-[#E4DED4] rounded-2xl p-6 sm:p-8 flex flex-col sm:flex-row items-center justify-between gap-6">
-          <div className="flex items-center gap-4 text-center sm:text-left">
-            <div className="w-12 h-12 rounded-xl bg-[#25D366]/15 text-[#25D366] flex items-center justify-center shrink-0 border border-[#25D366]/30">
-              <MessageCircle className="w-6 h-6 fill-[#25D366]" />
-            </div>
-            <div>
-              <h4 className="font-fraunces text-lg text-[#1A1815] font-medium">
-                ¿Tienes una duda específica sobre tu caso?
-              </h4>
-              <p className="text-xs sm:text-sm text-[#6B655C] mt-0.5">
-                Nuestro equipo de recepción y fisioterapeutas te responden en minutos por WhatsApp.
-              </p>
-            </div>
-          </div>
-
-          <a
-            href="https://wa.me/51984123456?text=Hola%20FIRME%20STUDIO%2C%20tengo%20una%20consulta%20antes%20de%20reservar%20mi%20primera%20clase%20de%20Pilates%20Reformer."
-            target="_blank"
-            rel="noreferrer"
-            className="bg-[#25D366] hover:bg-[#20bd5a] text-white text-xs sm:text-sm font-semibold px-5 py-3 rounded-xl transition-all shadow-xs flex items-center gap-2 shrink-0 cursor-pointer"
-          >
-            <MessageCircle className="w-4 h-4 fill-white" />
-            <span>Consultar por WhatsApp</span>
-          </a>
         </div>
 
       </div>

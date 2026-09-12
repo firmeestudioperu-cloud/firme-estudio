@@ -94,18 +94,18 @@ export const Hero: React.FC<HeroProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
           
           {/* Left / Top Text Area */}
-          <div className="md:col-span-1 lg:col-span-7 flex flex-col justify-center space-y-4 sm:space-y-6">
+          <div className="md:col-span-1 lg:col-span-7 flex flex-col justify-center space-y-5 sm:space-y-6">
             
-            {/* Tagline Badge */}
-            <div className="inline-flex items-center space-x-2 text-xs font-medium tracking-wider uppercase text-[#B5654A] bg-[#F1ECE5] px-3 py-1.5 rounded-md self-start border border-[#E4DED4]">
-              <Sparkles className="w-3.5 h-3.5" />
+            {/* Minimal Sub-tag */}
+            <div className="flex items-center space-x-2 text-xs font-semibold tracking-widest uppercase text-[#B5654A]">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#B5654A]" />
               <span>Estudio Boutique Reformer & Cadillac</span>
             </div>
 
             {/* Main Headline */}
             <h1
               id="hero-headline"
-              className="font-fraunces text-3xl sm:text-4xl md:text-5xl lg:text-[56px] leading-[1.12] text-[#1A1815] tracking-tight"
+              className="font-fraunces text-3xl sm:text-4xl md:text-5xl lg:text-[54px] leading-[1.12] text-[#1A1815] tracking-tight"
             >
               Movimiento consciente.<br />
               Pilates, con <span className="italic text-[#B5654A] font-normal">intención</span>.
@@ -114,18 +114,17 @@ export const Hero: React.FC<HeroProps> = ({
             {/* Subtitle */}
             <p
               id="hero-subtitle"
-              className="text-sm sm:text-lg text-[#6B655C] max-w-xl leading-relaxed font-normal"
+              className="text-base sm:text-lg text-[#6B655C] max-w-xl leading-relaxed font-normal"
             >
-              Un espacio sereno concebido para reeducar tu postura, fortalecer el centro
-              y restaurar el equilibrio biomecánico en grupos de máximo ocho alumnos.
+              Reeduca tu postura, fortalece el centro y restaura el equilibrio corporal en un espacio concebido para el bienestar integral.
             </p>
 
             {/* CTAs */}
-            <div className="pt-1 flex flex-col sm:flex-row items-stretch sm:items-center space-y-2.5 sm:space-y-0 sm:space-x-4">
+            <div className="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center space-y-3 sm:space-y-0 sm:space-x-4">
               <button
                 id="hero-cta-primary"
                 onClick={onBookFirstClass}
-                className="inline-flex items-center justify-center bg-[#B5654A] hover:bg-[#9A5340] text-[#FAF8F5] px-5 py-3 sm:px-6 sm:py-3.5 rounded-md font-medium text-sm sm:text-base transition-colors duration-200 shadow-xs group cursor-pointer"
+                className="inline-flex items-center justify-center bg-[#B5654A] hover:bg-[#9A5340] text-[#FAF8F5] px-6 py-3.5 rounded-lg font-medium text-sm sm:text-base transition-all duration-200 shadow-sm group cursor-pointer"
               >
                 <span>Reserva tu primera clase</span>
                 <ArrowRight className="ml-2 w-4 h-4 transition-transform group-hover:translate-x-1" />
@@ -134,41 +133,28 @@ export const Hero: React.FC<HeroProps> = ({
               <button
                 id="hero-cta-secondary"
                 onClick={onViewSchedule}
-                className="inline-flex items-center justify-center border border-[#B5654A] text-[#B5654A] hover:bg-[#B5654A]/5 px-5 py-3 sm:px-6 sm:py-3.5 rounded-md font-medium text-sm sm:text-base transition-colors duration-200 cursor-pointer"
+                className="inline-flex items-center justify-center border border-[#1A1815]/20 hover:border-[#1A1815] text-[#1A1815] hover:bg-[#1A1815]/5 px-6 py-3.5 rounded-lg font-medium text-sm sm:text-base transition-colors duration-200 cursor-pointer"
               >
                 Ver horarios
               </button>
             </div>
 
-            {/* Biomechanics Quiz Quick Entry */}
-            {onOpenBiomechanicsQuiz && (
-              <button
-                type="button"
-                onClick={onOpenBiomechanicsQuiz}
-                className="w-full sm:w-auto inline-flex items-center justify-between sm:justify-start gap-2 text-xs text-[#B5654A] font-semibold bg-[#F1ECE5] hover:bg-[#FAF2E8] px-3.5 py-2.5 rounded-lg border border-[#E4DED4] transition-all self-start cursor-pointer group shadow-2xs"
-              >
-                <div className="flex items-center gap-2">
-                  <Sparkles className="w-3.5 h-3.5 text-[#B5654A] group-hover:rotate-12 transition-transform shrink-0" />
-                  <span>¿Dudas sobre postura o dolores? <strong>Haz el Test Biomecánico</strong></span>
-                </div>
-                <span className="font-bold shrink-0">→</span>
-              </button>
-            )}
-
-            {/* Trust Metrics Bar */}
-            <div className="pt-4 grid grid-cols-3 gap-2 sm:gap-4 border-t border-[#E4DED4] text-[#6B655C]">
-              <div className="bg-[#F1ECE5]/40 sm:bg-transparent p-2.5 sm:p-0 rounded-lg sm:rounded-none">
-                <span className="block font-fraunces font-medium text-[#1A1815] text-sm sm:text-lg leading-tight">8 alumnos</span>
-                <span className="text-[10px] sm:text-xs text-[#6B655C] leading-tight block mt-0.5">Máximo por sesión</span>
-              </div>
-              <div className="bg-[#F1ECE5]/40 sm:bg-transparent p-2.5 sm:p-0 rounded-lg sm:rounded-none">
-                <span className="block font-fraunces font-medium text-[#1A1815] text-sm sm:text-lg leading-tight">Reformer & Tower</span>
-                <span className="text-[10px] sm:text-xs text-[#6B655C] leading-tight block mt-0.5">Aparatos alta gama</span>
-              </div>
-              <div className="bg-[#F1ECE5]/40 sm:bg-transparent p-2.5 sm:p-0 rounded-lg sm:rounded-none">
-                <span className="block font-fraunces font-medium text-[#1A1815] text-sm sm:text-lg leading-tight">100% Certificados</span>
-                <span className="text-[10px] sm:text-xs text-[#6B655C] leading-tight block mt-0.5">Instructores PMA</span>
-              </div>
+            {/* Minimal Typographic Trust Row (Sin cuadros ni fondos grises) */}
+            <div className="pt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-xs sm:text-sm text-[#6B655C] border-t border-[#E4DED4]/60">
+              <span className="flex items-center gap-1.5 text-[#1A1815] font-medium">
+                <span className="w-1 h-1 rounded-full bg-[#B5654A]" />
+                8 Camas Reformer Allegro 2
+              </span>
+              <span className="hidden sm:inline text-[#E4DED4]">·</span>
+              <span className="flex items-center gap-1.5 text-[#1A1815] font-medium">
+                <span className="w-1 h-1 rounded-full bg-[#B5654A]" />
+                Máximo 8 alumnas por sesión
+              </span>
+              <span className="hidden sm:inline text-[#E4DED4]">·</span>
+              <span className="flex items-center gap-1.5 text-[#1A1815] font-medium">
+                <span className="w-1 h-1 rounded-full bg-[#B5654A]" />
+                Instructores Certificados PMA
+              </span>
             </div>
 
           </div>
@@ -205,24 +191,8 @@ export const Hero: React.FC<HeroProps> = ({
                   );
                 })}
 
-                {/* Vignette & Gradient Overlays for high readability */}
-                <div className="absolute inset-0 bg-gradient-to-t from-[#1A1815]/95 via-[#1A1815]/40 to-black/20 z-10 pointer-events-none" />
-
-                {/* Top Floating Left Badge */}
-                <div className="absolute top-3 left-3 sm:top-4 sm:left-4 z-20 bg-[#FAF8F5]/90 backdrop-blur-md px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full text-[10px] sm:text-[11px] font-medium text-[#1A1815] shadow-xs flex items-center space-x-1.5 sm:space-x-2 border border-[#E4DED4]/60">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                  <span className="tracking-wide">{currentBanner.tag}</span>
-                </div>
-
-                {/* Top Floating Right Badge (Rotation & Slide Counter) */}
-                <div className="absolute top-3 right-3 sm:top-4 sm:right-4 z-20 flex items-center gap-1.5 bg-[#1A1815]/80 backdrop-blur-md px-2.5 py-1 rounded-full text-[10px] text-[#FAF8F5]/90 border border-white/15 shadow-xs">
-                  <Clock className="w-3 h-3 text-[#B5654A]" />
-                  <span>{settings.intervalMinutes} min</span>
-                  <span className="text-[#FAF8F5]/40">·</span>
-                  <span className="font-mono">
-                    {(currentIndex % activeBanners.length) + 1}/{activeBanners.length}
-                  </span>
-                </div>
+                {/* Subtle Vignette for contrast */}
+                <div className="absolute inset-0 bg-gradient-to-t from-[#1A1815]/80 via-transparent to-black/10 z-10 pointer-events-none" />
 
                 {/* Subtle Prev / Next Chevron Arrows on Hover */}
                 {activeBanners.length > 1 && (
@@ -233,9 +203,8 @@ export const Hero: React.FC<HeroProps> = ({
                         e.stopPropagation();
                         goToPrev();
                       }}
-                      className="absolute left-3 top-1/2 -translate-y-1/2 z-20 w-8 h-8 rounded-full bg-[#1A1815]/70 hover:bg-[#1A1815] text-white backdrop-blur-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 border border-white/20 cursor-pointer shadow-md"
+                      className="absolute left-3 top-1/2 -translate-y-1/2 z-20 w-8 h-8 rounded-full bg-[#1A1815]/60 hover:bg-[#1A1815] text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 border border-white/20 cursor-pointer shadow-sm"
                       aria-label="Imagen anterior"
-                      title="Imagen anterior"
                     >
                       <ChevronLeft className="w-4 h-4" />
                     </button>
@@ -245,37 +214,28 @@ export const Hero: React.FC<HeroProps> = ({
                         e.stopPropagation();
                         goToNext();
                       }}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 z-20 w-8 h-8 rounded-full bg-[#1A1815]/70 hover:bg-[#1A1815] text-white backdrop-blur-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 border border-white/20 cursor-pointer shadow-md"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 z-20 w-8 h-8 rounded-full bg-[#1A1815]/60 hover:bg-[#1A1815] text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 border border-white/20 cursor-pointer shadow-sm"
                       aria-label="Siguiente imagen"
-                      title="Siguiente imagen"
                     >
                       <ChevronRight className="w-4 h-4" />
                     </button>
                   </>
                 )}
 
-                {/* Bottom Content Area */}
-                <div className="absolute bottom-0 inset-x-0 p-4 sm:p-7 text-[#FAF8F5] z-20">
-                  <span className="block font-fraunces text-base sm:text-2xl text-[#FAF8F5] font-medium tracking-tight line-clamp-2">
-                    {currentBanner.title}
-                  </span>
-                  <span className="block text-[11px] sm:text-sm text-[#FAF8F5]/85 mt-1 font-inter max-w-md leading-relaxed line-clamp-2">
-                    {currentBanner.subtitle}
-                  </span>
-
-                  <div className="mt-3 sm:mt-4 pt-2 sm:pt-3 border-t border-white/15 flex items-center justify-between text-xs">
-                    <div className="bg-[#FAF8F5]/20 backdrop-blur-md px-2 py-0.5 sm:px-2.5 sm:py-1 rounded text-[9px] sm:text-[10px] tracking-widest uppercase font-medium text-[#FAF8F5] border border-white/20">
-                      {currentBanner.locationLabel || 'FIRME STUDIO · LIMA - SJL'}
-                    </div>
-                    <div className="flex items-center space-x-1.5 text-[10px] sm:text-[11px] text-[#FAF8F5]/80">
-                      <Sparkles className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-[#E4DED4]" />
-                      <span>{currentBanner.capacityLabel || 'Máx. 8 alumnos'}</span>
-                    </div>
+                {/* Minimal Editorial Caption */}
+                <div className="absolute bottom-0 inset-x-0 p-5 sm:p-6 text-[#FAF8F5] z-20 flex items-end justify-between">
+                  <div>
+                    <span className="block font-fraunces text-lg sm:text-xl text-[#FAF8F5] font-medium tracking-tight">
+                      {currentBanner.title}
+                    </span>
+                    <span className="block text-xs text-[#FAF8F5]/80 mt-0.5">
+                      {currentBanner.locationLabel || 'Jr. Akapana 1261, SJL'} · {currentBanner.capacityLabel || 'Máx. 8 alumnas'}
+                    </span>
                   </div>
 
                   {/* Dot Indicators */}
                   {activeBanners.length > 1 && (
-                    <div className="mt-3 flex items-center justify-center gap-1.5 pt-1">
+                    <div className="flex items-center gap-1.5 pb-1">
                       {activeBanners.map((_, idx) => (
                         <button
                           key={idx}
@@ -286,8 +246,8 @@ export const Hero: React.FC<HeroProps> = ({
                           }}
                           className={`h-1.5 rounded-full transition-all duration-300 cursor-pointer ${
                             idx === currentIndex % activeBanners.length
-                              ? 'w-6 bg-[#B5654A]'
-                              : 'w-2 bg-white/40 hover:bg-white/70'
+                              ? 'w-5 bg-[#B5654A]'
+                              : 'w-1.5 bg-white/40 hover:bg-white/70'
                           }`}
                           aria-label={`Ver foto ${idx + 1}`}
                         />

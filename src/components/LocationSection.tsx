@@ -38,91 +38,61 @@ export const LocationSection: React.FC = () => {
           {/* Col 1 (5 cols): Location Details Cards */}
           <div className="md:col-span-1 lg:col-span-5 flex flex-col justify-between space-y-4">
             
-            {/* Address Card */}
-            <div className="bg-[#FAF8F5] border border-[#E4DED4] rounded-2xl p-6 shadow-xs">
-              <div className="flex items-start gap-3.5 mb-4">
-                <div className="w-10 h-10 rounded-xl bg-[#B5654A]/10 text-[#B5654A] flex items-center justify-center shrink-0 border border-[#B5654A]/20">
-                  <MapPin className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-fraunces text-lg text-[#1A1815] font-medium">
-                    Dirección del Estudio
-                  </h3>
-                  <p className="text-sm font-semibold text-[#1A1815] mt-1">
-                    Jr. Akapana 1261
-                  </p>
-                  <p className="text-xs text-[#6B655C] mt-0.5">
-                    San Juan de Lurigancho (LIMA - SJL), Lima, Perú
-                  </p>
-                </div>
-              </div>
-
-              <div className="space-y-2.5 pt-3 border-t border-[#E4DED4] text-xs text-[#6B655C]">
-                <div className="flex items-center gap-2">
-                  <Train className="w-4 h-4 text-[#B5654A] shrink-0" />
-                  <span><strong>Acceso y Transporte:</strong> Ubicado estratégicamente en Jr. Akapana 1261, zona residencial tranquila con fácil llegada peatonal y vehicular en SJL.</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Car className="w-4 h-4 text-[#B5654A] shrink-0" />
-                  <span><strong>Estacionamiento:</strong> Espacio y cochera vigilada cercana (tarifa preferencial para alumnas y alumnos de FIRME).</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <ShieldCheck className="w-4 h-4 text-[#B5654A] shrink-0" />
-                  <span><strong>Seguridad:</strong> Edificio boutique con vigilancia 24/7, control de acceso y ascensor directo.</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Hours Card */}
-            <div className="bg-[#FAF8F5] border border-[#E4DED4] rounded-2xl p-6 shadow-xs">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-xl bg-[#B5654A]/10 text-[#B5654A] flex items-center justify-center shrink-0 border border-[#B5654A]/20">
-                  <Clock className="w-5 h-5" />
-                </div>
-                <h3 className="font-fraunces text-lg text-[#1A1815] font-medium">
-                  Horarios de Atención y Sesiones
+            {/* Address & Hours Clean Card */}
+            <div className="bg-[#FAF8F5] border border-[#E4DED4] rounded-xl p-6 sm:p-7 flex flex-col justify-between space-y-6">
+              
+              {/* Address Header */}
+              <div>
+                <span className="text-[11px] font-semibold tracking-widest uppercase text-[#B5654A] block mb-1">
+                  Sede San Juan de Lurigancho
+                </span>
+                <h3 className="font-fraunces text-xl text-[#1A1815] font-medium">
+                  Jr. Akapana 1261
                 </h3>
+                <p className="text-xs text-[#6B655C] mt-1">
+                  Zona residencial accesible con vigilancia y estacionamiento cercano.
+                </p>
               </div>
 
-              <div className="space-y-2 text-xs">
-                <div className="flex justify-between py-1.5 border-b border-[#E4DED4]/60">
-                  <span className="text-[#6B655C]">Lunes a Viernes:</span>
-                  <span className="font-semibold text-[#1A1815]">06:30 AM – 21:00 PM</span>
+              {/* Hours Schedule */}
+              <div className="space-y-2 text-xs pt-4 border-t border-[#E4DED4]/60">
+                <div className="flex justify-between py-1 border-b border-[#E4DED4]/40">
+                  <span className="text-[#6B655C]">Lunes a Viernes</span>
+                  <span className="font-medium text-[#1A1815]">06:30 – 21:00</span>
                 </div>
-                <div className="flex justify-between py-1.5 border-b border-[#E4DED4]/60">
-                  <span className="text-[#6B655C]">Sábados:</span>
-                  <span className="font-semibold text-[#1A1815]">07:30 AM – 14:00 PM</span>
+                <div className="flex justify-between py-1 border-b border-[#E4DED4]/40">
+                  <span className="text-[#6B655C]">Sábados</span>
+                  <span className="font-medium text-[#1A1815]">07:30 – 14:00</span>
                 </div>
-                <div className="flex justify-between py-1.5">
-                  <span className="text-[#6B655C]">Domingos y Feriados:</span>
-                  <span className="font-semibold text-[#1A1815]">08:30 AM – 13:00 PM</span>
+                <div className="flex justify-between py-1">
+                  <span className="text-[#6B655C]">Domingos y Feriados</span>
+                  <span className="font-medium text-[#1A1815]">08:30 – 13:00</span>
                 </div>
               </div>
-            </div>
 
-            {/* Map Action Buttons */}
-            <div className="grid grid-cols-2 gap-3 pt-2">
-              <a
-                href={googleMapsUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="bg-[#1A1815] hover:bg-[#B5654A] text-white py-3 px-4 rounded-xl text-xs font-medium flex items-center justify-center gap-2 transition-all shadow-xs"
-              >
-                <Navigation className="w-4 h-4" />
-                <span>Google Maps</span>
-                <ExternalLink className="w-3 h-3 opacity-60" />
-              </a>
+              {/* Action Buttons (Boutique styling) */}
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <a
+                  href={googleMapsUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="bg-[#1A1815] hover:bg-[#B5654A] text-[#FAF8F5] py-3 px-4 rounded-lg text-xs font-medium flex items-center justify-center gap-2 transition-all shadow-xs"
+                >
+                  <Navigation className="w-3.5 h-3.5" />
+                  <span>Google Maps</span>
+                </a>
 
-              <a
-                href={wazeUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="bg-[#33CCFF] hover:bg-[#20b8eb] text-[#1A1815] py-3 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-xs"
-              >
-                <Navigation className="w-4 h-4" />
-                <span>Waze</span>
-                <ExternalLink className="w-3 h-3 opacity-60" />
-              </a>
+                <a
+                  href={wazeUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="border border-[#1A1815]/30 hover:border-[#1A1815] text-[#1A1815] hover:bg-[#1A1815]/5 py-3 px-4 rounded-lg text-xs font-medium flex items-center justify-center gap-2 transition-all"
+                >
+                  <Navigation className="w-3.5 h-3.5 rotate-45" />
+                  <span>Waze</span>
+                </a>
+              </div>
+
             </div>
 
           </div>
