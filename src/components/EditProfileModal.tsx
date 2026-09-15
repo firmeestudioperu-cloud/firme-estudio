@@ -51,6 +51,18 @@ const PRESET_AVATARS = [
   'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80',
 ];
 
+const normalizeHealthConditions = (conds: unknown): string[] => {
+  if (Array.isArray(conds)) {
+    const cleaned = conds.map((c) => String(c).trim()).filter(Boolean);
+    return cleaned.length > 0 ? cleaned : ['Ninguna'];
+  }
+  if (typeof conds === 'string' && conds.trim()) {
+    const splitted = conds.split(',').map((c) => c.trim()).filter(Boolean);
+    return splitted.length > 0 ? splitted : ['Ninguna'];
+  }
+  return ['Ninguna'];
+};
+
 export const EditProfileModal: React.FC<EditProfileModalProps> = ({
   isOpen,
   onClose,
@@ -62,6 +74,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
   const [phone, setPhone] = useState('');
   const [documentType, setDocumentType] = useState<'dni' | 'ce' | 'pasaporte'>('dni');
   const [dni, setDni] = useState('');
+  const [alternateDni, setAlternateDni] = useState('');
   const [birthDate, setBirthDate] = useState('');
   const [gender, setGender] = useState<'femenino' | 'masculino' | 'otro'>('femenino');
   const [experienceLevel, setExperienceLevel] = useState<'Principiante' | 'Intermedio' | 'Avanzado'>('Principiante');
@@ -92,17 +105,14 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
       setPhone(currentUser.phone || '');
       setDocumentType(currentUser.documentType || 'dni');
       setDni(currentUser.dni || '');
+      setAlternateDni(currentUser.alternateDni || '');
       setBirthDate(currentUser.birthDate || '');
       setGender(currentUser.gender || 'femenino');
       setExperienceLevel(currentUser.experienceLevel || 'Principiante');
       setAvatar(currentUser.avatar || '');
       setEmergencyContact(currentUser.emergencyContact || '');
       setEmergencyPhone(currentUser.emergencyPhone || '');
-      setHealthConditions(
-        currentUser.healthConditions && currentUser.healthConditions.length > 0
-          ? currentUser.healthConditions
-          : ['Ninguna']
-      );
+      setHealthConditions(normalizeHealthConditions(currentUser.healthConditions));
       setMedicalNotes(currentUser.medicalNotes || '');
       setShareInLeaderboard(currentUser.shareInLeaderboard ?? true);
       setReceiveMarketingUpdates(currentUser.receiveMarketingUpdates ?? true);
@@ -112,14 +122,48 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
     }
   }, [currentUser, isOpen]);
 
-  if (!isOpen || !currentUser) return null;
+  if (!isOpen) return null;
+
+  if (!currentUser) {
+    return (
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#1A1815]/60 backdrop-blur-xs animate-in fade-in duration-200"
+        onClick={onClose}
+      >
+        <div
+          className="bg-[#FAF8F5] rounded-3xl border border-[#DDD5C9] shadow-2xl w-full max-w-md p-6 text-[#1A1815] text-center space-y-4"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="w-12 h-12 rounded-2xl bg-[#B5654A]/10 text-[#B5654A] flex items-center justify-center mx-auto">
+            <User className="w-6 h-6" />
+          </div>
+          <h3 className="font-fraunces text-2xl font-bold text-[#1A1815]">Identificación Requerida</h3>
+          <p className="text-xs text-[#6B655C] leading-relaxed">
+            Para ver o editar tu información de alumna, por favor inicia sesión o regístrate en el estudio.
+          </p>
+          <div className="pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-full py-2.5 px-4 bg-[#B5654A] hover:bg-[#9A5340] text-white rounded-xl text-xs font-semibold shadow-xs cursor-pointer transition-colors"
+            >
+              Entendido, cerrar
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const toggleCondition = (cond: string) => {
+    const currentList = Array.isArray(healthConditions) ? healthConditions : ['Ninguna'];
     if (cond === 'Ninguna') {
       setHealthConditions(['Ninguna']);
       return;
     }
-    const filtered = healthConditions.filter((c) => c !== 'Ninguna');
+    const filtered = currentList.filter((c) => c !== 'Ninguna');
     if (filtered.includes(cond)) {
       const next = filtered.filter((c) => c !== cond);
       setHealthConditions(next.length === 0 ? ['Ninguna'] : next);
@@ -205,7 +249,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
     downloadAnchor.setAttribute('href', dataStr);
     downloadAnchor.setAttribute(
       'download',
-      `firme_studio_mis_datos_${currentUser.name.replace(/\s+/g, '_').toLowerCase()}.json`
+      `firme_studio_mis_datos_${(currentUser?.name || 'alumna').replace(/\s+/g, '_').toLowerCase()}.json`
     );
     document.body.appendChild(downloadAnchor);
     downloadAnchor.click();
@@ -215,18 +259,26 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const updatedUser: AuthUser = {
-      ...currentUser,
-      name: name.trim() || currentUser.name,
+      ...(currentUser || {
+        id: 'usr-' + Date.now(),
+        name: 'Alumna FIRME',
+        email: 'alumna@firmestudio.pe',
+        provider: 'manual',
+        role: 'client',
+        roleTitle: 'Alumna',
+      }),
+      name: name.trim() || currentUser?.name || 'Alumna FIRME',
       phone: phone.trim(),
       documentType,
       dni: dni.trim(),
+      alternateDni: alternateDni.trim() || undefined,
       birthDate,
       gender,
       experienceLevel,
       avatar: avatar.trim(),
       emergencyContact: emergencyContact.trim(),
       emergencyPhone: emergencyPhone.trim(),
-      healthConditions,
+      healthConditions: Array.isArray(healthConditions) ? healthConditions : ['Ninguna'],
       medicalNotes: medicalNotes.trim(),
       shareInLeaderboard,
       receiveMarketingUpdates,
@@ -366,7 +418,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
                   <input
                     type="email"
                     disabled
-                    value={currentUser.email}
+                    value={currentUser?.email || ''}
                     className="w-full pl-10 pr-3.5 py-2.5 bg-[#F1ECE5] border border-[#DDD5C9] rounded-xl text-xs sm:text-sm text-[#6B655C] cursor-not-allowed select-none"
                   />
                 </div>
@@ -423,6 +475,31 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
                 </div>
               </div>
 
+              {/* Documento Alternativo o Segundo DNI (Opcional) */}
+              <div className="bg-[#F8F5F0] border border-[#E8E1D5] rounded-xl p-3">
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-semibold text-[#1A1815]">
+                    Documento Secundario / Alternativo
+                  </label>
+                  <span className="text-[10px] text-[#8C8479] font-medium bg-white px-2 py-0.5 rounded border border-[#DDD5C9]">
+                    Opcional
+                  </span>
+                </div>
+                <div className="relative">
+                  <CreditCard className="w-4 h-4 text-[#8C8479] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={alternateDni}
+                    onChange={(e) => setAlternateDni(e.target.value)}
+                    placeholder="Ej. Pasaporte, CE o DNI secundario"
+                    className="w-full pl-9 pr-3 py-2 bg-white border border-[#DDD5C9] rounded-xl text-xs sm:text-sm text-[#1A1815] placeholder:text-[#8C8479] focus:outline-hidden focus:border-[#B5654A] font-mono shadow-2xs"
+                  />
+                </div>
+                <p className="text-[10px] text-[#6B655C] mt-1.5 leading-tight">
+                  ✨ Permite identificarte y pasar el check-in en recepción con cualquiera de tus 2 documentos.
+                </p>
+              </div>
+
               {/* Fecha Nacimiento y Género */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 <div>
@@ -475,7 +552,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
                 </label>
                 <div className="flex flex-wrap gap-2">
                   {COMMON_HEALTH_CONDITIONS.map((cond) => {
-                    const isSelected = healthConditions.includes(cond);
+                    const isSelected = Array.isArray(healthConditions) && healthConditions.includes(cond);
                     return (
                       <button
                         key={cond}
@@ -553,14 +630,14 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
                   />
                 ) : (
                   <div className="w-16 h-16 rounded-full bg-[#B5654A] text-white flex items-center justify-center font-fraunces text-2xl shrink-0">
-                    {name.charAt(0) || 'U'}
+                    {(name || currentUser?.name || 'U').charAt(0).toUpperCase()}
                   </div>
                 )}
                 <div>
-                  <div className="font-semibold text-sm text-[#1A1815]">{name || 'Tu Nombre'}</div>
+                  <div className="font-semibold text-sm text-[#1A1815]">{name || currentUser?.name || 'Tu Nombre'}</div>
                   <div className="text-xs text-[#6B655C]">Nivel: {experienceLevel}</div>
                   <div className="text-[10px] text-[#B5654A] font-medium mt-0.5">
-                    {currentUser.planName || 'Pase Regular'} · {currentUser.creditsLeft ?? 0} clases
+                    {currentUser?.planName || 'Pase Regular'} · {currentUser?.creditsLeft ?? 0} clases
                   </div>
                 </div>
               </div>

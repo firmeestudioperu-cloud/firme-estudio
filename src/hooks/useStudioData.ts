@@ -166,6 +166,26 @@ export function useStudioData(options?: UseStudioDataOptions) {
           setBookingsList(bks);
         }
       });
+      supabaseService.getClients().then((clients) => {
+        if (isMounted && clients && clients.length > 0) {
+          setClientsList(clients);
+        }
+      });
+      supabaseService.getCashTransactions().then((txs) => {
+        if (isMounted && txs && txs.length > 0) {
+          setTransactionsList(txs);
+        }
+      });
+      supabaseService.getExpenses().then((exps) => {
+        if (isMounted && exps && exps.length > 0) {
+          setExpensesList(exps);
+        }
+      });
+      supabaseService.getLeads().then((lds) => {
+        if (isMounted && lds && lds.length > 0) {
+          setLeadsList(lds);
+        }
+      });
     }
 
     // Suscripción Realtime a reservas (Tótem SJL y nuevas reservas)
@@ -190,19 +210,48 @@ export function useStudioData(options?: UseStudioDataOptions) {
 
   // CRUD: Classes
   const handleAddClass = useCallback((newClass: Omit<ClassSession, 'id'>) => {
-    const id = `c-${Date.now()}`;
-    setClassesList((prev) => [{ id, ...newClass }, ...prev]);
-  }, []);
+    const tempId = `c-${Date.now()}`;
+    setClassesList((prev) => [{ id: tempId, ...newClass }, ...prev]);
+    if (isSupabaseConfigured()) {
+      supabaseService.createClass(newClass).then((created) => {
+        if (created) {
+          setClassesList((prev) => prev.map((c) => (c.id === tempId ? created : c)));
+        } else {
+          showToast?.('Error al guardar clase', 'No se pudo sincronizar la nueva clase con la base de datos de Supabase.', true);
+        }
+      }).catch((err) => {
+        showToast?.('Error al guardar clase', `Fallo de conexión al registrar la clase: ${err?.message || 'Error desconocido'}`, true);
+      });
+    }
+  }, [showToast]);
 
   const handleUpdateClass = useCallback((updatedClass: ClassSession) => {
     setClassesList((prev) =>
       prev.map((c) => (c.id === updatedClass.id ? updatedClass : c))
     );
-  }, []);
+    if (isSupabaseConfigured()) {
+      supabaseService.updateClass(updatedClass).then((success) => {
+        if (!success) {
+          showToast?.('Error al actualizar clase', 'No se pudieron guardar las modificaciones de la clase en Supabase.', true);
+        }
+      }).catch((err) => {
+        showToast?.('Error al actualizar clase', `Fallo de conexión al guardar cambios: ${err?.message || 'Error desconocido'}`, true);
+      });
+    }
+  }, [showToast]);
 
   const handleDeleteClass = useCallback((classId: string) => {
     setClassesList((prev) => prev.filter((c) => c.id !== classId));
-  }, []);
+    if (isSupabaseConfigured()) {
+      supabaseService.deleteClass(classId).then((success) => {
+        if (!success) {
+          showToast?.('Error al eliminar clase', 'No se pudo eliminar la clase de la base de datos de Supabase.', true);
+        }
+      }).catch((err) => {
+        showToast?.('Error al eliminar clase', `Fallo de conexión al eliminar la clase: ${err?.message || 'Error desconocido'}`, true);
+      });
+    }
+  }, [showToast]);
 
   const handleUpdateSpots = useCallback((classId: string, delta: number) => {
     setClassesList((prev) =>
@@ -230,7 +279,16 @@ export function useStudioData(options?: UseStudioDataOptions) {
       }),
     };
     setBookingsList((prev) => [record, ...prev]);
-  }, []);
+    if (isSupabaseConfigured()) {
+      supabaseService.createBooking(record).then((res) => {
+        if (!res) {
+          showToast?.('Error al guardar reserva', 'La reserva se registró localmente pero no se pudo sincronizar con la base de datos.', true);
+        }
+      }).catch((err) => {
+        showToast?.('Error al guardar reserva', `Fallo de conexión al guardar la reserva: ${err?.message || 'Error desconocido'}`, true);
+      });
+    }
+  }, [showToast]);
 
   const handleUpdateBookingStatus = useCallback((
     bookingId: string,
@@ -239,63 +297,175 @@ export function useStudioData(options?: UseStudioDataOptions) {
     setBookingsList((prev) =>
       prev.map((b) => (b.id === bookingId ? { ...b, status } : b))
     );
-  }, []);
+    if (isSupabaseConfigured()) {
+      supabaseService.updateBookingStatus(bookingId, status).then((success) => {
+        if (!success) {
+          showToast?.('Error al actualizar reserva', 'No se pudo actualizar el estado de la reserva en Supabase.', true);
+        }
+      }).catch((err) => {
+        showToast?.('Error al actualizar reserva', `Fallo de conexión al actualizar la reserva: ${err?.message || 'Error desconocido'}`, true);
+      });
+    }
+  }, [showToast]);
 
   const handleCheckInBooking = useCallback((updatedBooking: BookingRecord) => {
     setBookingsList((prev) =>
       prev.map((b) => (b.id === updatedBooking.id ? updatedBooking : b))
     );
-  }, []);
+    if (isSupabaseConfigured()) {
+      if (updatedBooking.clientDni) {
+        supabaseService.performTotemCheckIn(updatedBooking.clientDni).then((res) => {
+          if (res && !res.success) {
+            showToast?.('Error en Check-In', res.error || 'No se pudo validar la asistencia en la base de datos.', true);
+          }
+        }).catch((err) => {
+          showToast?.('Error en Check-In', `Fallo al registrar check-in: ${err?.message || 'Error desconocido'}`, true);
+        });
+      } else {
+        supabaseService.updateBookingStatus(updatedBooking.id, 'asistio').then((success) => {
+          if (!success) {
+            showToast?.('Error en Check-In', 'No se pudo marcar la asistencia en la base de datos.', true);
+          }
+        }).catch((err) => {
+          showToast?.('Error en Check-In', `Fallo al marcar asistencia: ${err?.message || 'Error desconocido'}`, true);
+        });
+      }
+    }
+  }, [showToast]);
 
   const handleAssignBed = useCallback((bookingId: string, bedNumber: number) => {
     setBookingsList((prev) =>
       prev.map((b) => (b.id === bookingId ? { ...b, bedNumber } : b))
     );
-  }, []);
+    if (isSupabaseConfigured()) {
+      supabaseService.assignBed(bookingId, bedNumber).then((success) => {
+        if (!success) {
+          showToast?.('Error al asignar cama', 'No se pudo registrar la cama en la base de datos de Supabase.', true);
+        }
+      }).catch((err) => {
+        showToast?.('Error al asignar cama', `Fallo al guardar la cama: ${err?.message || 'Error desconocido'}`, true);
+      });
+    }
+  }, [showToast]);
 
   // CRUD: Clients
   const handleAddClient = useCallback((clientData: Omit<ClientProfile, 'id'>) => {
+    const tempId = `cli-${Date.now()}`;
     const newClient: ClientProfile = {
       ...clientData,
-      id: `cli-${Date.now()}`,
+      id: tempId,
     };
     setClientsList((prev) => [newClient, ...prev]);
-  }, []);
+    if (isSupabaseConfigured()) {
+      supabaseService.createClient(clientData).then((created) => {
+        if (created) {
+          setClientsList((prev) => prev.map((c) => (c.id === tempId ? created : c)));
+        } else {
+          showToast?.('Error al guardar alumna', 'No se pudo registrar la alumna en la base de datos de Supabase.', true);
+        }
+      }).catch((err) => {
+        showToast?.('Error al guardar alumna', `Fallo de conexión al guardar alumna: ${err?.message || 'Error desconocido'}`, true);
+      });
+    }
+  }, [showToast]);
 
   const handleUpdateClient = useCallback((updatedClient: ClientProfile) => {
     setClientsList((prev) =>
       prev.map((c) => (c.id === updatedClient.id ? updatedClient : c))
     );
-  }, []);
+    if (isSupabaseConfigured()) {
+      supabaseService.updateClient(updatedClient).then((success) => {
+        if (!success) {
+          showToast?.('Error al actualizar alumna', 'No se pudieron guardar las modificaciones de la alumna en Supabase.', true);
+        }
+      }).catch((err) => {
+        showToast?.('Error al actualizar alumna', `Fallo de conexión al actualizar datos: ${err?.message || 'Error desconocido'}`, true);
+      });
+    }
+  }, [showToast]);
 
   const handleDeleteClient = useCallback((clientId: string) => {
     setClientsList((prev) => prev.filter((c) => c.id !== clientId));
-  }, []);
+    if (isSupabaseConfigured()) {
+      supabaseService.deleteClient(clientId).then((success) => {
+        if (!success) {
+          showToast?.('Error al eliminar alumna', 'No se pudo eliminar la alumna de la base de datos de Supabase.', true);
+        }
+      }).catch((err) => {
+        showToast?.('Error al eliminar alumna', `Fallo de conexión al eliminar alumna: ${err?.message || 'Error desconocido'}`, true);
+      });
+    }
+  }, [showToast]);
 
   const handleUpdateClientCredits = useCallback((clientId: string, credits: number) => {
     setClientsList((prev) =>
-      prev.map((c) => (c.id === clientId ? { ...c, creditsLeft: credits } : c))
+      prev.map((c) => {
+        if (c.id === clientId) {
+          const updated = { ...c, creditsLeft: credits };
+          if (isSupabaseConfigured()) {
+            supabaseService.updateClient(updated).then((success) => {
+              if (!success) {
+                showToast?.('Error al actualizar créditos', 'No se pudo sincronizar el saldo de clases en Supabase.', true);
+              }
+            }).catch((err) => {
+              showToast?.('Error al actualizar créditos', `Fallo al actualizar créditos: ${err?.message || 'Error desconocido'}`, true);
+            });
+          }
+          return updated;
+        }
+        return c;
+      })
     );
-  }, []);
+  }, [showToast]);
 
   // CRUD: Transactions & Cash Register
   const handleAddTransaction = useCallback((txData: Omit<CashTransaction, 'id'>) => {
+    const tempId = `tx-${Date.now()}`;
     const newTx: CashTransaction = {
       ...txData,
-      id: `tx-${Date.now()}`,
+      id: tempId,
     };
     setTransactionsList((prev) => [newTx, ...prev]);
-  }, []);
+    if (isSupabaseConfigured()) {
+      supabaseService.createCashTransaction(txData).then((created) => {
+        if (created) {
+          setTransactionsList((prev) => prev.map((t) => (t.id === tempId ? created : t)));
+        } else {
+          showToast?.('Error en caja', 'El movimiento se registró localmente pero no se pudo guardar en Supabase.', true);
+        }
+      }).catch((err) => {
+        showToast?.('Error en caja', `Fallo al guardar movimiento de caja: ${err?.message || 'Error desconocido'}`, true);
+      });
+    }
+  }, [showToast]);
 
   const handleUpdateTransaction = useCallback((updatedTx: CashTransaction) => {
     setTransactionsList((prev) =>
       prev.map((t) => (t.id === updatedTx.id ? updatedTx : t))
     );
-  }, []);
+    if (isSupabaseConfigured()) {
+      supabaseService.updateCashTransaction(updatedTx).then((success) => {
+        if (!success) {
+          showToast?.('Error en caja', 'No se pudo actualizar la transacción en la base de datos.', true);
+        }
+      }).catch((err) => {
+        showToast?.('Error en caja', `Fallo al actualizar movimiento: ${err?.message || 'Error desconocido'}`, true);
+      });
+    }
+  }, [showToast]);
 
   const handleDeleteTransaction = useCallback((txId: string) => {
     setTransactionsList((prev) => prev.filter((t) => t.id !== txId));
-  }, []);
+    if (isSupabaseConfigured()) {
+      supabaseService.deleteCashTransaction(txId).then((success) => {
+        if (!success) {
+          showToast?.('Error en caja', 'No se pudo eliminar el movimiento de la base de datos.', true);
+        }
+      }).catch((err) => {
+        showToast?.('Error en caja', `Fallo al eliminar movimiento: ${err?.message || 'Error desconocido'}`, true);
+      });
+    }
+  }, [showToast]);
 
   const handleToggleCashRegister = useCallback(() => {
     setCashRegister((prev) => ({
@@ -308,55 +478,145 @@ export function useStudioData(options?: UseStudioDataOptions) {
 
   // CRUD: Expenses
   const handleAddExpense = useCallback((expenseData: Omit<ExpenseRecord, 'id'>) => {
+    const tempId = `exp-${Date.now()}`;
     const newExpense: ExpenseRecord = {
       ...expenseData,
-      id: `exp-${Date.now()}`,
+      id: tempId,
     };
     setExpensesList((prev) => [newExpense, ...prev]);
-  }, []);
+    if (isSupabaseConfigured()) {
+      supabaseService.createExpense(expenseData).then((created) => {
+        if (created) {
+          setExpensesList((prev) => prev.map((e) => (e.id === tempId ? created : e)));
+        } else {
+          showToast?.('Error al guardar gasto', 'El gasto se guardó localmente pero no se pudo sincronizar con Supabase.', true);
+        }
+      }).catch((err) => {
+        showToast?.('Error al guardar gasto', `Fallo al guardar gasto: ${err?.message || 'Error desconocido'}`, true);
+      });
+    }
+  }, [showToast]);
 
   const handleUpdateExpense = useCallback((updatedExpense: ExpenseRecord) => {
     setExpensesList((prev) =>
       prev.map((e) => (e.id === updatedExpense.id ? updatedExpense : e))
     );
-  }, []);
+    if (isSupabaseConfigured()) {
+      supabaseService.updateExpense(updatedExpense).then((success) => {
+        if (!success) {
+          showToast?.('Error al actualizar gasto', 'No se pudieron guardar las modificaciones del gasto en Supabase.', true);
+        }
+      }).catch((err) => {
+        showToast?.('Error al actualizar gasto', `Fallo al actualizar gasto: ${err?.message || 'Error desconocido'}`, true);
+      });
+    }
+  }, [showToast]);
 
   const handleDeleteExpense = useCallback((expenseId: string) => {
     setExpensesList((prev) => prev.filter((e) => e.id !== expenseId));
-  }, []);
+    if (isSupabaseConfigured()) {
+      supabaseService.deleteExpense(expenseId).then((success) => {
+        if (!success) {
+          showToast?.('Error al eliminar gasto', 'No se pudo eliminar el gasto de la base de datos de Supabase.', true);
+        }
+      }).catch((err) => {
+        showToast?.('Error al eliminar gasto', `Fallo al eliminar gasto: ${err?.message || 'Error desconocido'}`, true);
+      });
+    }
+  }, [showToast]);
 
   const handleUpdateExpenseStatus = useCallback((id: string, status: 'pagado' | 'pendiente') => {
     setExpensesList((prev) =>
-      prev.map((e) => (e.id === id ? { ...e, status } : e))
+      prev.map((e) => {
+        if (e.id === id) {
+          const updated = { ...e, status };
+          if (isSupabaseConfigured()) {
+            supabaseService.updateExpense(updated).then((success) => {
+              if (!success) {
+                showToast?.('Error al actualizar gasto', 'No se pudo actualizar el estado de pago del gasto en Supabase.', true);
+              }
+            }).catch((err) => {
+              showToast?.('Error al actualizar gasto', `Fallo al actualizar estado de gasto: ${err?.message || 'Error desconocido'}`, true);
+            });
+          }
+          return updated;
+        }
+        return e;
+      })
     );
-  }, []);
+  }, [showToast]);
 
   // CRUD: Leads
   const handleAddLead = useCallback((leadData: Omit<LeadRecord, 'id' | 'createdAt'>) => {
     const now = new Date();
+    const tempId = `lead-${Date.now()}`;
     const newLead: LeadRecord = {
       ...leadData,
-      id: `lead-${Date.now()}`,
+      id: tempId,
       createdAt: `${now.toLocaleDateString('es-PE')} ${now.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}`,
     };
     setLeadsList((prev) => [newLead, ...prev]);
-  }, []);
+    if (isSupabaseConfigured()) {
+      supabaseService.createLead(leadData).then((created) => {
+        if (created) {
+          setLeadsList((prev) => prev.map((l) => (l.id === tempId ? created : l)));
+        } else {
+          showToast?.('Error al guardar prospecto', 'El prospecto se guardó localmente pero falló el registro en Supabase.', true);
+        }
+      }).catch((err) => {
+        showToast?.('Error al guardar prospecto', `Fallo al registrar prospecto: ${err?.message || 'Error desconocido'}`, true);
+      });
+    }
+  }, [showToast]);
 
   const handleUpdateLead = useCallback((updatedLead: LeadRecord) => {
     setLeadsList((prev) =>
       prev.map((l) => (l.id === updatedLead.id ? updatedLead : l))
     );
-  }, []);
+    if (isSupabaseConfigured()) {
+      supabaseService.updateLead(updatedLead).then((success) => {
+        if (!success) {
+          showToast?.('Error al actualizar prospecto', 'No se pudieron guardar las modificaciones del prospecto en Supabase.', true);
+        }
+      }).catch((err) => {
+        showToast?.('Error al actualizar prospecto', `Fallo al actualizar prospecto: ${err?.message || 'Error desconocido'}`, true);
+      });
+    }
+  }, [showToast]);
 
   const handleDeleteLead = useCallback((leadId: string) => {
     setLeadsList((prev) => prev.filter((l) => l.id !== leadId));
-  }, []);
+    if (isSupabaseConfigured()) {
+      supabaseService.deleteLead(leadId).then((success) => {
+        if (!success) {
+          showToast?.('Error al eliminar prospecto', 'No se pudo eliminar el prospecto de la base de datos de Supabase.', true);
+        }
+      }).catch((err) => {
+        showToast?.('Error al eliminar prospecto', `Fallo al eliminar prospecto: ${err?.message || 'Error desconocido'}`, true);
+      });
+    }
+  }, [showToast]);
 
   const handleUpdateLeadStatus = useCallback((leadId: string, status: LeadRecord['status']) => {
     setLeadsList((prev) =>
-      prev.map((l) => (l.id === leadId ? { ...l, status } : l))
+      prev.map((l) => {
+        if (l.id === leadId) {
+          const updated = { ...l, status };
+          if (isSupabaseConfigured()) {
+            supabaseService.updateLead(updated).then((success) => {
+              if (!success) {
+                showToast?.('Error al actualizar prospecto', 'No se pudo actualizar el estado del prospecto en Supabase.', true);
+              }
+            }).catch((err) => {
+              showToast?.('Error al actualizar prospecto', `Fallo al actualizar estado: ${err?.message || 'Error desconocido'}`, true);
+            });
+          }
+          return updated;
+        }
+        return l;
+      })
     );
-  }, []);
+  }, [showToast]);
 
   const handleConvertLeadToClient = useCallback((lead: LeadRecord) => {
     // 1. Mark lead as converted
@@ -381,6 +641,15 @@ export function useStudioData(options?: UseStudioDataOptions) {
           lastVisit: 'Recién registrado',
           medicalNotes: lead.notes || 'Convertido desde captación de leads (SJL)',
         };
+        if (isSupabaseConfigured()) {
+          supabaseService.createClient(newClient).then((res) => {
+            if (!res) {
+              showToast?.('Aviso de Sincronización', 'La alumna se dio de alta en el navegador pero no se pudo sincronizar en la nube.', true);
+            }
+          }).catch((err) => {
+            showToast?.('Error al sincronizar alumna', `Fallo al enviar a la nube: ${err?.message || 'Error desconocido'}`, true);
+          });
+        }
         return [newClient, ...prev];
       }
       return prev;

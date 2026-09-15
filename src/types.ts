@@ -149,8 +149,8 @@ export interface ClientProfile {
   lastVisit: string;
   emergencyContact?: string;
   emergencyPhone?: string;
-  medicalNotes?: string;
   documentType?: 'dni' | 'ce' | 'pasaporte';
+  alternateDni?: string; // Documento secundario o alternativo (CE, Pasaporte o DNI anterior)
   birthDate?: string;
   gender?: 'femenino' | 'masculino' | 'otro';
   registrationMethod?: 'qr' | 'manual_smartfit' | 'manual_web' | 'whatsapp' | 'receptionist_desk';
@@ -589,6 +589,7 @@ export interface AuthUser {
   emergencyContact?: string;
   emergencyPhone?: string;
   documentType?: 'dni' | 'ce' | 'pasaporte';
+  alternateDni?: string; // Documento alternativo (CE, Pasaporte o DNI secundario)
   birthDate?: string;
   gender?: 'femenino' | 'masculino' | 'otro';
   registrationMethod?: 'qr' | 'manual_smartfit' | 'manual_web' | 'whatsapp' | 'receptionist_desk';
@@ -610,6 +611,8 @@ export interface ClientBookingFormData {
   email: string;
   phone: string;
   dni: string;
+  alternateDni?: string;
+  documentType?: 'dni' | 'ce' | 'pasaporte';
   experienceLevel: 'Principiante' | 'Intermedio' | 'Avanzado';
   healthConditions: string[];
   medicalNotes?: string;

@@ -25,7 +25,8 @@ import {
 } from 'lucide-react';
 import { AuthUser, MainTabType, BookingRecord, ClassSession, ClientProfile, getRoleDefinition } from '../types';
 import { CameraQrScannerModal } from './CameraQrScannerModal';
-import { supabaseService } from '../services/supabaseService';
+import { supabaseService, mapDbBookingToRecord, mapDbClientToProfile } from '../services/supabaseService';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 interface StaffDestinationHubProps {
   currentUser: AuthUser | null;
@@ -235,29 +236,188 @@ export const StaffDestinationHub: React.FC<StaffDestinationHubProps> = ({
     onSelectDestination('kiosco');
   };
 
-  // Función núcleo de verificación de clase por DNI o código escaneado
-  const processCheckInVerification = (rawQuery: string) => {
+  // Función núcleo de verificación de clase por DNI, CE, Pasaporte, Celular, Email o Nombre
+  const processCheckInVerification = async (
+    queryInput: string | { dni?: string; name?: string; memId?: string; phone?: string; email?: string; raw?: string }
+  ) => {
     setFeedbackAlert(null);
-    const cleaned = rawQuery.trim();
+    let targetDni = '';
+    let targetName = '';
+    let targetMemId = '';
+    let targetPhone = '';
+    let targetEmail = '';
+    let rawQuery = '';
+
+    if (typeof queryInput === 'object' && queryInput !== null) {
+      targetDni = (queryInput.dni || '').trim();
+      targetName = (queryInput.name || '').trim();
+      targetMemId = (queryInput.memId || '').trim();
+      targetPhone = ((queryInput as any).phone || '').trim();
+      targetEmail = ((queryInput as any).email || '').trim();
+      rawQuery = (queryInput.raw || '').trim();
+    } else {
+      rawQuery = String(queryInput || '').trim();
+    }
+
+    // Si aún no tenemos targetDni, intentar extraerlo con seguridad de rawQuery sin concatenar puertos ni URLs
+    if (!targetDni && rawQuery) {
+      const dniParamMatch =
+        rawQuery.match(/[?&#](?:dni|doc|documento|ce|pasaporte)=([^&#]+)/i) ||
+        rawQuery.match(/(?:dni|doc|documento|ce|pasaporte)[=:\s]+([A-Za-z0-9_-]{6,15})/i);
+      if (dniParamMatch) {
+        targetDni = decodeURIComponent(dniParamMatch[1]).trim();
+      } else if (!rawQuery.includes('http') && !rawQuery.includes('/') && !rawQuery.includes('?')) {
+        const digits = rawQuery.replace(/\D/g, '');
+        if (digits.length >= 6 && digits.length <= 12) {
+          targetDni = digits;
+        }
+      } else {
+        const isolated = rawQuery.match(/(?:dni|doc)[=:\s/]+([0-9]{7,10})/i);
+        if (isolated) {
+          targetDni = isolated[1];
+        }
+      }
+    }
+
+    if (!targetEmail && rawQuery.includes('@')) {
+      const emailMatch = rawQuery.match(/[?&#](?:email|correo)=([^&#]+)/i);
+      if (emailMatch) {
+        targetEmail = decodeURIComponent(emailMatch[1]).trim();
+      } else {
+        targetEmail = rawQuery.trim();
+      }
+    }
+
+    if (!targetPhone) {
+      const phoneParamMatch = rawQuery.match(/[?&#](?:phone|tel|cel|celular|telefono)=([^&#]+)/i);
+      if (phoneParamMatch) {
+        targetPhone = decodeURIComponent(phoneParamMatch[1]).trim();
+      } else {
+        const rawDigits = rawQuery.replace(/\D/g, '');
+        if (rawDigits.length === 9 && rawDigits.startsWith('9')) {
+          targetPhone = rawDigits;
+        }
+      }
+    }
+
+    if (!targetName && rawQuery) {
+      const nameMatch = rawQuery.match(/[?&#]name=([^&#]+)/i);
+      if (nameMatch) {
+        targetName = decodeURIComponent(nameMatch[1]).replace(/\+/g, ' ').trim();
+      }
+    }
+
+    if (!targetMemId && rawQuery) {
+      const memMatch = rawQuery.match(/[?&#]memId=([^&#]+)/i);
+      if (memMatch) {
+        targetMemId = decodeURIComponent(memMatch[1]).trim();
+      }
+    }
+
+    const cleaned = (targetDni || targetPhone || targetEmail || targetMemId || targetName || rawQuery).trim();
     if (!cleaned) {
-      setFeedbackAlert({ type: 'error', message: 'Por favor ingresa o escanea un DNI o código válido.' });
+      setFeedbackAlert({ type: 'error', message: 'Por favor ingresa o escanea un DNI, documento, celular o código válido.' });
       return;
     }
 
-    // Extraer solo dígitos para DNI si aplica
-    const digitsOnly = cleaned.replace(/\D/g, '');
-    const searchDni = digitsOnly.length >= 6 ? digitsOnly : cleaned;
+    const cleanDigits = (targetDni || targetPhone || cleaned).replace(/\D/g, '');
 
-    // 1. Buscar en reservas activas (no canceladas)
-    const matchingBooking = bookings.find(
-      (b) =>
-        b &&
-        b.status !== 'cancelada' &&
-        (b.clientDni === searchDni ||
-          b.clientDni === digitsOnly ||
-          b.clientName?.toLowerCase().includes(cleaned.toLowerCase()) ||
-          b.id === cleaned)
-    );
+    // CRUCE INTELIGENTE PREVIO:
+    // Buscar si existe un perfil de alumna en memoria que coincida con alguno de los datos ingresados
+    // (DNI principal, DNI alternativo, CE, Pasaporte, Celular, Email o Nombre)
+    const matchedProfile = clients.find((c) => {
+      if (!c) return false;
+      const cPhoneDigits = (c.phone || '').replace(/\D/g, '');
+      
+      // Coincidencia por DNI principal o alternativo
+      if (targetDni && (c.dni === targetDni || c.alternateDni === targetDni)) return true;
+      if (cleaned && (c.dni === cleaned || c.alternateDni === cleaned)) return true;
+      
+      // Coincidencia por Celular (últimos 8 o 9 dígitos)
+      if (cleanDigits.length >= 8 && cPhoneDigits.endsWith(cleanDigits.slice(-8))) return true;
+      if (targetPhone && cPhoneDigits.includes(targetPhone)) return true;
+      
+      // Coincidencia por Correo Electrónico
+      if (targetEmail && c.email && c.email.toLowerCase() === targetEmail.toLowerCase()) return true;
+      if (cleaned.includes('@') && c.email && c.email.toLowerCase() === cleaned.toLowerCase()) return true;
+      
+      // Coincidencia por Nombre
+      if (targetName && c.name && c.name.toLowerCase().includes(targetName.toLowerCase())) return true;
+      if (cleaned.length >= 4 && c.name && c.name.toLowerCase().includes(cleaned.toLowerCase())) return true;
+
+      return false;
+    });
+
+    // 1. Buscar en reservas activas (no canceladas) en memoria local
+    let matchingBooking = bookings.find((b) => {
+      if (!b || b.status === 'cancelada') return false;
+      const bPhoneDigits = (b.clientPhone || '').replace(/\D/g, '');
+
+      // 1.1 Coincidencia directa por DNI o Código
+      if (targetDni && b.clientDni === targetDni) return true;
+      if (cleaned && (b.clientDni === cleaned || b.id === cleaned)) return true;
+
+      // 1.2 Coincidencia por Celular
+      if (cleanDigits.length >= 8 && bPhoneDigits.endsWith(cleanDigits.slice(-8))) return true;
+      if (targetPhone && bPhoneDigits.includes(targetPhone)) return true;
+
+      // 1.3 Coincidencia por Email
+      if (targetEmail && b.clientEmail && b.clientEmail.toLowerCase() === targetEmail.toLowerCase()) return true;
+      if (cleaned.includes('@') && b.clientEmail && b.clientEmail.toLowerCase() === cleaned.toLowerCase()) return true;
+
+      // 1.4 Coincidencia por Nombre
+      if (targetName && b.clientName && b.clientName.toLowerCase().includes(targetName.toLowerCase())) return true;
+      if (cleaned.length >= 4 && b.clientName && b.clientName.toLowerCase().includes(cleaned.toLowerCase())) return true;
+
+      // 1.5 Coincidencia por Member ID
+      if (targetMemId && (b.id === targetMemId || b.clientDni?.includes(targetMemId))) return true;
+
+      // 1.6 CRUCE DE PERFIL: Si la alumna fue identificada en la base del estudio, validar con sus identificadores
+      if (matchedProfile) {
+        if (matchedProfile.dni && b.clientDni === matchedProfile.dni) return true;
+        if (matchedProfile.alternateDni && b.clientDni === matchedProfile.alternateDni) return true;
+        if (matchedProfile.email && b.clientEmail && b.clientEmail.toLowerCase() === matchedProfile.email.toLowerCase()) return true;
+        const mpPhone = (matchedProfile.phone || '').replace(/\D/g, '');
+        if (mpPhone.length >= 8 && bPhoneDigits.endsWith(mpPhone.slice(-8))) return true;
+        if (matchedProfile.name && b.clientName && b.clientName.toLowerCase().includes(matchedProfile.name.toLowerCase().split(' ')[0])) return true;
+      }
+
+      return false;
+    });
+
+    // 1.1 Si no se encuentra en memoria local, consultar Supabase Cloud en tiempo real
+    if (!matchingBooking && isSupabaseConfigured() && supabase) {
+      try {
+        let sbQuery = supabase.from('bookings').select('*').neq('status', 'cancelada');
+        if (targetEmail || cleaned.includes('@')) {
+          sbQuery = sbQuery.ilike('client_email', targetEmail || cleaned);
+        } else if (targetPhone || cleanDigits.length >= 8) {
+          const digits = targetPhone || cleanDigits;
+          sbQuery = sbQuery.or(`client_dni.eq.${digits},client_phone.ilike.%${digits.slice(-8)}%`);
+        } else if (targetDni) {
+          sbQuery = sbQuery.or(`client_dni.eq.${targetDni},client_dni.ilike.%${targetDni}%`);
+        } else {
+          sbQuery = sbQuery.or(`client_name.ilike.%${cleaned}%,id.eq.${cleaned}`);
+        }
+        const { data: remoteBookings, error: sbErr } = await sbQuery.order('created_at', { ascending: false }).limit(1);
+        if (!sbErr && remoteBookings && remoteBookings.length > 0) {
+          matchingBooking = mapDbBookingToRecord(remoteBookings[0]);
+        } else if (matchedProfile) {
+          const { data: crossRemote } = await supabase
+            .from('bookings')
+            .select('*')
+            .neq('status', 'cancelada')
+            .or(`client_dni.eq.${matchedProfile.dni}${matchedProfile.email ? `,client_email.ilike.${matchedProfile.email}` : ''}`)
+            .order('created_at', { ascending: false })
+            .limit(1);
+          if (crossRemote && crossRemote.length > 0) {
+            matchingBooking = mapDbBookingToRecord(crossRemote[0]);
+          }
+        }
+      } catch (err) {
+        console.warn('Error consultando Supabase para check-in:', err);
+      }
+    }
 
     if (matchingBooking) {
       const scanTimeStr = new Date().toLocaleTimeString('es-PE', {
@@ -271,14 +431,30 @@ export const StaffDestinationHub: React.FC<StaffDestinationHubProps> = ({
         cls?.roomName ||
         (cls?.classType === 'Reformer' ? 'Sala 1 Reformer' : 'Sala 2 (Torre)');
       const roomId = cls?.roomId || (cls?.classType === 'Reformer' ? 'sala-1' : 'sala-2');
-      const matchedClient = clients.find((c) => c && c.dni === (matchingBooking.clientDni || searchDni));
+      let matchedClient = clients.find((c) => c && (c.dni === matchingBooking.clientDni || (targetDni && c.dni === targetDni)));
+
+      // Si no está el cliente en memoria local, buscar en Supabase
+      if (!matchedClient && isSupabaseConfigured() && supabase && (matchingBooking.clientDni || targetDni)) {
+        try {
+          const { data: dbClients } = await supabase
+            .from('clients')
+            .select('*')
+            .eq('dni', matchingBooking.clientDni || targetDni)
+            .limit(1);
+          if (dbClients && dbClients.length > 0) {
+            matchedClient = mapDbClientToProfile(dbClients[0]);
+          }
+        } catch {
+          // ignore
+        }
+      }
 
       // Si ya estaba registrada previamente
       if (matchingBooking.status === 'asistio') {
         playStudioChime();
         setVerifiedBookingResult({
           clientName: matchingBooking.clientName,
-          dni: matchingBooking.clientDni || searchDni,
+          dni: matchingBooking.clientDni || targetDni || cleaned,
           avatar: matchedClient?.avatar,
           level: matchedClient?.planType === 'ilimitado' ? 'Avanzada · VIP' : 'Intermedio',
           roomName,
@@ -313,11 +489,14 @@ export const StaffDestinationHub: React.FC<StaffDestinationHubProps> = ({
       playStudioChime();
 
       // Sincronizar en background con Supabase si está disponible
-      supabaseService.performTotemCheckIn(searchDni).catch(() => {});
+      const syncDni = targetDni || matchingBooking.clientDni;
+      if (syncDni) {
+        supabaseService.performTotemCheckIn(syncDni).catch(() => {});
+      }
 
       setVerifiedBookingResult({
         clientName: matchingBooking.clientName,
-        dni: matchingBooking.clientDni || searchDni,
+        dni: matchingBooking.clientDni || targetDni || cleaned,
         avatar: matchedClient?.avatar,
         level: matchedClient?.planType === 'ilimitado' ? 'Avanzada · VIP' : 'Intermedio',
         roomName,
@@ -345,14 +524,46 @@ export const StaffDestinationHub: React.FC<StaffDestinationHubProps> = ({
     setIsManualDniOpen(false);
     playWarningChime();
 
-    // 2. Buscar si la persona existe como clienta registrada en el estudio
-    const matchingClient = clients.find(
-      (c) => c && (c.dni === searchDni || c.dni === digitsOnly || c.name?.toLowerCase().includes(cleaned.toLowerCase()))
-    );
+    // 2. Buscar si la persona existe como clienta registrada en el estudio (local o Supabase)
+    let matchingClient =
+      matchedProfile ||
+      clients.find(
+        (c) =>
+          c &&
+          ((targetDni && (c.dni === targetDni || c.alternateDni === targetDni)) ||
+            (targetPhone && c.phone?.replace(/\D/g, '').endsWith(targetPhone.slice(-8))) ||
+            (targetEmail && c.email?.toLowerCase() === targetEmail.toLowerCase()) ||
+            (targetName && c.name?.toLowerCase().includes(targetName.toLowerCase())) ||
+            (cleaned &&
+              (c.dni === cleaned ||
+                c.alternateDni === cleaned ||
+                c.name?.toLowerCase().includes(cleaned.toLowerCase()))))
+      );
+
+    if (!matchingClient && isSupabaseConfigured() && supabase && (targetDni || cleaned || targetPhone || targetEmail)) {
+      try {
+        let clientSbQuery = supabase.from('clients').select('*');
+        if (targetEmail || cleaned.includes('@')) {
+          clientSbQuery = clientSbQuery.ilike('email', targetEmail || cleaned);
+        } else if (targetPhone || cleanDigits.length >= 8) {
+          const digits = targetPhone || cleanDigits;
+          clientSbQuery = clientSbQuery.or(`dni.eq.${digits},phone.ilike.%${digits.slice(-8)}%`);
+        } else {
+          clientSbQuery = clientSbQuery.or(`dni.eq.${targetDni || cleaned},name.ilike.%${cleaned}%`);
+        }
+
+        const { data: dbClients } = await clientSbQuery.limit(1);
+        if (dbClients && dbClients.length > 0) {
+          matchingClient = mapDbClientToProfile(dbClients[0]);
+        }
+      } catch {
+        // ignore
+      }
+    }
 
     if (matchingClient) {
       setNoClassWarningResult({
-        query: searchDni,
+        query: targetDni || cleaned,
         clientName: matchingClient.name,
         dni: matchingClient.dni,
         avatar: matchingClient.avatar,
@@ -372,7 +583,7 @@ export const StaffDestinationHub: React.FC<StaffDestinationHubProps> = ({
     // 3. No encontrada en reservas ni clientes
     setNoClassWarningResult({
       query: cleaned,
-      dni: searchDni,
+      dni: targetDni || cleaned,
       status: 'unregistered_code',
       message: 'El código QR o DNI ingresado no figura con ninguna clase reservada para hoy.',
     });
@@ -384,8 +595,7 @@ export const StaffDestinationHub: React.FC<StaffDestinationHubProps> = ({
   };
 
   const handleQrScanSuccess = (data: { dni?: string; name?: string; memId?: string; raw: string }) => {
-    const query = data.dni || data.memId || data.name || data.raw;
-    processCheckInVerification(query);
+    processCheckInVerification(data);
   };
 
   const handleManualDniSubmit = (e: React.FormEvent) => {
@@ -854,10 +1064,10 @@ export const StaffDestinationHub: React.FC<StaffDestinationHubProps> = ({
               </div>
               <div>
                 <h3 className="font-fraunces text-xl font-bold text-[#1A1815]">
-                  Verificación por DNI
+                  Identificación de Alumna
                 </h3>
                 <p className="text-xs text-[#6B655C]">
-                  Ingresa el número de documento de la alumna
+                  DNI, Carné de Extranjería, Pasaporte o Celular
                 </p>
               </div>
             </div>
@@ -865,16 +1075,19 @@ export const StaffDestinationHub: React.FC<StaffDestinationHubProps> = ({
             <form onSubmit={handleManualDniSubmit} className="space-y-4 mt-4">
               <div>
                 <label className="block text-xs font-semibold text-[#6B655C] uppercase tracking-wider mb-1.5">
-                  Número de DNI o Código
+                  Documento, Celular o Correo
                 </label>
                 <input
                   type="text"
                   autoFocus
-                  placeholder="Ej. 70112233"
+                  placeholder="Ej. 70112233 / 987654321 / CE / Pasaporte"
                   value={manualDniInput}
                   onChange={(e) => setManualDniInput(e.target.value)}
-                  className="w-full px-4 py-3 text-lg font-mono tracking-wider rounded-xl border border-[#DDD5C9] bg-white text-[#1A1815] focus:outline-none focus:ring-2 focus:ring-[#B5654A]"
+                  className="w-full px-4 py-3 text-base font-mono tracking-wide rounded-xl border border-[#DDD5C9] bg-white text-[#1A1815] focus:outline-none focus:ring-2 focus:ring-[#B5654A]"
                 />
+                <p className="text-[11px] text-[#8C827A] mt-1.5 leading-tight">
+                  Búsqueda universal: El sistema reconoce automáticamente DNI, Carné de Extranjería, Pasaporte, Celular registrado (9 dígitos) o nombre.
+                </p>
               </div>
 
               <div className="flex gap-2">

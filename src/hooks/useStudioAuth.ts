@@ -217,7 +217,22 @@ export function useStudioAuth(options?: UseStudioAuthOptions) {
         medicalNotes: updatedUser.medicalNotes || '',
         emergencyContact: updatedUser.emergencyContact || '',
         emergencyPhone: updatedUser.emergencyPhone || '',
-      }).catch((err) => console.warn('Supabase profile sync warning:', err));
+      }).then((success) => {
+        if (!success) {
+          showToast?.(
+            'Aviso de Guardado',
+            'Tus datos se guardaron en el navegador, pero no se pudieron sincronizar con la nube.',
+            true
+          );
+        }
+      }).catch((err) => {
+        console.warn('Supabase profile sync warning:', err);
+        showToast?.(
+          'Error al Guardar Perfil',
+          `Fallo de conexión al sincronizar con la nube: ${err?.message || 'Error'}`,
+          true
+        );
+      });
     }
   }, [showToast]);
 

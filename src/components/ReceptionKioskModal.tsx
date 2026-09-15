@@ -180,16 +180,38 @@ export const ReceptionKioskModal: React.FC<ReceptionKioskModalProps> = ({
       // Continuar al fallback local
     }
 
-    // 2. Fallback local en memoria
-    const matchingBooking = bookings.find(
-      (b) => b.status !== 'cancelada' && b.clientDni === trimmedDni
+    // 2. Fallback local en memoria con búsqueda inteligente y cruce de datos
+    const cleanDigits = trimmedDni.replace(/\D/g, '');
+
+    const matchingClient = clients.find(
+      (c) =>
+        c &&
+        (c.dni === trimmedDni ||
+          c.alternateDni === trimmedDni ||
+          (cleanDigits.length >= 8 && c.phone?.replace(/\D/g, '').endsWith(cleanDigits.slice(-8))) ||
+          (trimmedDni.includes('@') && c.email?.toLowerCase() === trimmedDni.toLowerCase()) ||
+          c.name?.toLowerCase().includes(trimmedDni.toLowerCase()))
     );
 
-    const matchingClient = clients.find((c) => c.dni === trimmedDni);
+    const matchingBooking = bookings.find((b) => {
+      if (!b || b.status === 'cancelada') return false;
+      const bPhone = (b.clientPhone || '').replace(/\D/g, '');
+      if (b.clientDni === trimmedDni) return true;
+      if (cleanDigits.length >= 8 && bPhone.endsWith(cleanDigits.slice(-8))) return true;
+      if (trimmedDni.includes('@') && b.clientEmail?.toLowerCase() === trimmedDni.toLowerCase()) return true;
+      if (matchingClient) {
+        if (matchingClient.dni && b.clientDni === matchingClient.dni) return true;
+        if (matchingClient.alternateDni && b.clientDni === matchingClient.alternateDni) return true;
+        if (matchingClient.email && b.clientEmail?.toLowerCase() === matchingClient.email.toLowerCase()) return true;
+        const mcPhone = (matchingClient.phone || '').replace(/\D/g, '');
+        if (mcPhone.length >= 8 && bPhone.endsWith(mcPhone.slice(-8))) return true;
+      }
+      return false;
+    });
 
     if (!matchingBooking && !matchingClient) {
       setErrorMessage(
-        'No encontramos reserva ni alumna con DNI ' + trimmedDni + '. Acércate al counter de recepción para asistencia.'
+        'No encontramos reserva ni alumna con ' + trimmedDni + '. Acércate al counter de recepción para asistencia.'
       );
       return;
     }
@@ -226,12 +248,17 @@ export const ReceptionKioskModal: React.FC<ReceptionKioskModalProps> = ({
     setAutoResetTimer(8);
   };
 
-  const handleCameraScanSuccess = (data: { dni?: string; name?: string; memId?: string; raw: string }) => {
-    const searchDni = (data.dni || data.memId || '').trim();
-    if (searchDni) {
-      handlePerformCheckInByDni(searchDni);
+  const handleCameraScanSuccess = (data: { dni?: string; name?: string; memId?: string; phone?: string; email?: string; raw: string }) => {
+    let searchDoc = (data.dni || data.phone || data.email || data.memId || '').trim();
+    if (!searchDoc && data.raw) {
+      const match = data.raw.match(/[?&#](?:dni|doc|documento|ce|pasaporte)=([^&#]+)/i);
+      if (match) searchDoc = decodeURIComponent(match[1]).trim();
+    }
+    if (searchDoc) {
+      setIsCameraScannerOpen(false);
+      handlePerformCheckInByDni(searchDoc);
     } else {
-      setErrorMessage('No se pudo identificar un DNI en el código QR escaneado.');
+      setErrorMessage('No pudimos detectar un documento o código válido en el código escaneado.');
     }
   };
 

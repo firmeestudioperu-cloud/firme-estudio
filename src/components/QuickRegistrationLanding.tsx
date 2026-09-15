@@ -241,11 +241,26 @@ export const QuickRegistrationLanding: React.FC<QuickRegistrationLandingProps> =
       // 1. Validar en Supabase si está disponible
       if (supabase && isSupabaseConfigured()) {
         try {
-          const { error } = await supabase.auth.verifyOtp({
+          const { data: authData } = await supabase.auth.verifyOtp({
             email: cleanEmail,
             token: fullEnteredCode,
             type: 'signup',
           });
+
+          // Registrar inmediatamente a la alumna en public.clients
+          const fallbackDni = cleanPhone.replace(/\D/g, '').slice(-8).padStart(8, '7');
+          await supabase.from('clients').upsert(
+            {
+              auth_user_id: authData?.user?.id || null,
+              name: cleanName,
+              email: cleanEmail,
+              phone: cleanPhone,
+              dni: fallbackDni,
+              status: 'activo',
+              registration_method: 'receptionist_desk',
+            },
+            { onConflict: 'email' }
+          );
 
           // IMPORTANTE: Cerrar sesión inmediatamente para que la tablet no quede con la cuenta abierta
           await supabase.auth.signOut();

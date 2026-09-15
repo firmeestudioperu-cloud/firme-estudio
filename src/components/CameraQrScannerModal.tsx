@@ -15,7 +15,14 @@ import { Html5Qrcode } from 'html5-qrcode';
 interface CameraQrScannerModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onScanSuccess: (data: { dni?: string; name?: string; memId?: string; raw: string }) => void;
+  onScanSuccess: (data: {
+    dni?: string;
+    name?: string;
+    memId?: string;
+    phone?: string;
+    email?: string;
+    raw: string;
+  }) => void;
   title?: string;
   subtitle?: string;
 }
@@ -62,37 +69,95 @@ export const CameraQrScannerModal: React.FC<CameraQrScannerModalProps> = ({
     let dni: string | undefined = undefined;
     let name: string | undefined = undefined;
     let memId: string | undefined = undefined;
+    let phone: string | undefined = undefined;
+    let email: string | undefined = undefined;
+
+    const trimmed = (rawText || '').trim();
 
     try {
-      if (rawText.includes('?')) {
-        // Formato URL: /?action=checkin&dni=70112233&memId=FIRME-MEM-8821&name=Valentino
-        const url = new URL(rawText.startsWith('http') ? rawText : `https://firmestudio.pe${rawText.startsWith('/') ? '' : '/'}${rawText}`);
-        dni = url.searchParams.get('dni') || undefined;
-        name = url.searchParams.get('name') || undefined;
-        memId = url.searchParams.get('memId') || undefined;
-      } else if (rawText.startsWith('{') && rawText.endsWith('}')) {
-        // Formato JSON
-        const parsed = JSON.parse(rawText);
-        dni = parsed.dni;
-        name = parsed.name;
-        memId = parsed.memId || parsed.id;
-      } else {
-        // Formato directo: Solo número de DNI o ID de membresía
-        const digits = rawText.replace(/\D/g, '');
-        if (digits.length >= 6 && digits.length <= 12) {
-          dni = digits;
+      // 1. Formato JSON: { "dni": "...", "name": "...", "phone": "...", "email": "..." }
+      if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+        const parsed = JSON.parse(trimmed);
+        const docVal = parsed.dni || parsed.doc || parsed.ce || parsed.passport || parsed.documentNumber;
+        dni = docVal ? String(docVal).trim() : undefined;
+        name = parsed.name || undefined;
+        memId = parsed.memId || parsed.id || undefined;
+        phone = parsed.phone || parsed.cel || undefined;
+        email = parsed.email || undefined;
+      }
+
+      // 2. Extraer parámetros de URL (incluso si están después de hash '#' o '?')
+      if (!dni) {
+        const dniMatch =
+          trimmed.match(/[?&#](?:dni|doc|documento|ce|passport|pasaporte)=([^&#]+)/i) ||
+          trimmed.match(/(?:dni|doc|documento|ce|pasaporte)[=:\s]+([A-Za-z0-9_-]{6,15})/i);
+        if (dniMatch) {
+          const rawDoc = decodeURIComponent(dniMatch[1]).trim();
+          if (rawDoc.length >= 6 && rawDoc.length <= 15) {
+            dni = rawDoc;
+          }
+        }
+      }
+
+      if (!phone) {
+        const phoneMatch =
+          trimmed.match(/[?&#](?:phone|tel|cel|celular|telefono)=([^&#]+)/i) ||
+          trimmed.match(/(?:tel|cel|celular)[=:\s]+([0-9+]{9,15})/i);
+        if (phoneMatch) {
+          phone = decodeURIComponent(phoneMatch[1]).trim();
+        }
+      }
+
+      if (!email) {
+        const emailMatch =
+          trimmed.match(/[?&#](?:email|correo)=([^&#]+)/i) ||
+          trimmed.match(/(?:email|correo)[=:\s]+([^\s&]+@[^\s&]+)/i);
+        if (emailMatch) {
+          email = decodeURIComponent(emailMatch[1]).trim();
+        }
+      }
+
+      if (!name) {
+        const nameMatch =
+          trimmed.match(/[?&#]name=([^&#]+)/i) ||
+          trimmed.match(/(?:name|nombre|alumno)[=:\s]+([^&#]+)/i);
+        if (nameMatch) {
+          name = decodeURIComponent(nameMatch[1]).replace(/\+/g, ' ').trim();
+        }
+      }
+
+      if (!memId) {
+        const memMatch =
+          trimmed.match(/[?&#]memId=([^&#]+)/i) ||
+          trimmed.match(/(?:memId|id|codigo)[=:\s]+([^&#]+)/i);
+        if (memMatch) {
+          memId = decodeURIComponent(memMatch[1]).trim();
+        }
+      }
+
+      // 3. Fallback si aún no hay DNI y el texto no es una URL
+      if (!dni) {
+        if (trimmed.includes('@')) {
+          email = trimmed;
         } else {
-          memId = rawText.trim();
+          const isolatedMatch = trimmed.match(/(?:\b|\D)([0-9]{7,10})(?:\b|\D)/);
+          if (isolatedMatch) {
+            dni = isolatedMatch[1];
+          } else if (!trimmed.includes('http') && !trimmed.includes('/') && !trimmed.includes('?')) {
+            const digits = trimmed.replace(/\D/g, '');
+            if (digits.length >= 6 && digits.length <= 12) {
+              dni = digits;
+            } else {
+              memId = trimmed;
+            }
+          }
         }
       }
     } catch {
-      const digits = rawText.replace(/\D/g, '');
-      if (digits.length >= 6) {
-        dni = digits;
-      }
+      // ignore
     }
 
-    return { dni, name, memId, raw: rawText };
+    return { dni, name, memId, phone, email, raw: trimmed };
   };
 
   const handleSuccessfulScan = async (decodedText: string) => {

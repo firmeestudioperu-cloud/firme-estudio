@@ -52,12 +52,35 @@ export const MyClasses: React.FC<MyClassesProps> = ({
   const [isQrEnlarged, setIsQrEnlarged] = useState(false);
   const [isDownloadingPass, setIsDownloadingPass] = useState(false);
 
-  const studentDni = currentUser?.dni || '70112233';
+  // Recuperar DNI real prioritario: de currentUser, de sus reservas activas o de localStorage
+  const studentDni = (() => {
+    if (currentUser?.dni && currentUser.dni !== '70112233') return currentUser.dni;
+    if (typeof window !== 'undefined') {
+      try {
+        const authSaved = localStorage.getItem('firme_auth_user');
+        if (authSaved) {
+          const u = JSON.parse(authSaved);
+          if (u.dni && u.dni !== '70112233') return u.dni;
+        }
+        const bksSaved = localStorage.getItem('firme_bookings_data');
+        if (bksSaved) {
+          const bks = JSON.parse(bksSaved);
+          const myBk = bks.find((b: any) =>
+            (currentUser?.email && b.clientEmail?.toLowerCase() === currentUser.email.toLowerCase()) ||
+            (currentUser?.name && b.clientName?.toLowerCase() === currentUser.name.toLowerCase())
+          );
+          if (myBk?.clientDni) return myBk.clientDni;
+        }
+      } catch {}
+    }
+    return currentUser?.dni || '74829103';
+  })();
+
   const studentId = currentUser?.id || 'FIRME-MEM-8821';
-  const studentName = currentUser?.name || 'Valentino';
+  const studentName = currentUser?.name || 'Alumna FIRME';
 
   const currentOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://firmestudio.pe';
-  const checkInUrl = `${currentOrigin}/?action=checkin&dni=${encodeURIComponent(studentDni)}&memId=${encodeURIComponent(studentId)}&name=${encodeURIComponent(studentName)}`;
+  const checkInUrl = `${currentOrigin}/?action=checkin&dni=${encodeURIComponent(studentDni)}&name=${encodeURIComponent(studentName)}&memId=${encodeURIComponent(studentId)}`;
   const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=360x360&color=1A1815&bgcolor=FFFFFF&margin=8&qzone=2&data=${encodeURIComponent(checkInUrl)}`;
 
   const handleDownloadPass = () => {

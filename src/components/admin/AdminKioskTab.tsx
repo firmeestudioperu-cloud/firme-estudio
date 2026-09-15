@@ -215,6 +215,7 @@ export const AdminKioskTab: React.FC<AdminKioskTabProps> = ({
       if (chosenBed) {
         supabaseService.assignBed(booking.id, chosenBed).catch(() => {});
       }
+      supabaseService.updateBookingStatus(booking.id, 'asistio').catch(() => {});
 
       // 2. Probar backend REST
       try {
@@ -319,17 +320,47 @@ export const AdminKioskTab: React.FC<AdminKioskTabProps> = ({
     executeWalkInForClient(client);
   };
 
-  const handleQrScanSuccess = (data: { dni?: string; name?: string; memId?: string; raw: string }) => {
-    const searchDni = (data.dni || data.memId || '').trim();
-    if (!searchDni) {
+  const handleQrScanSuccess = (data: { dni?: string; name?: string; memId?: string; phone?: string; email?: string; raw: string }) => {
+    let searchDoc = (data.dni || data.phone || data.email || data.memId || '').trim();
+    if (!searchDoc && data.raw) {
+      const match = data.raw.match(/[?&#](?:dni|doc|documento|ce|pasaporte)=([^&#]+)/i);
+      if (match) searchDoc = decodeURIComponent(match[1]).trim();
+    }
+    const cleanDigits = (data.dni || data.phone || searchDoc).replace(/\D/g, '');
+
+    if (!searchDoc && !cleanDigits && !data.name) {
       setFeedbackMessage('No se pudo identificar un DNI o código válido en el QR escaneado.');
       return;
     }
 
-    // 1. Buscar si tiene reserva en la clase activa de esta sala
-    const inCurrentClass = classBookings.find(
-      (b) => b && (b.clientDni === searchDni || (data.name && b.clientName?.toLowerCase() === data.name.toLowerCase()))
+    // Buscar perfil de clienta en la base para cruce inteligente
+    const matchedClient = safeClients.find(
+      (c) =>
+        c &&
+        ((searchDoc && (c.dni === searchDoc || c.alternateDni === searchDoc)) ||
+          (cleanDigits.length >= 8 && c.phone?.replace(/\D/g, '').endsWith(cleanDigits.slice(-8))) ||
+          (data.email && c.email?.toLowerCase() === data.email.toLowerCase()) ||
+          (data.name && c.name?.toLowerCase().includes(data.name.toLowerCase())))
     );
+
+    const matchesBooking = (b: BookingRecord) => {
+      if (!b || b.status === 'cancelada') return false;
+      if (searchDoc && (b.clientDni === searchDoc || b.id === searchDoc)) return true;
+      if (cleanDigits.length >= 8 && b.clientPhone && b.clientPhone.replace(/\D/g, '').endsWith(cleanDigits.slice(-8))) return true;
+      if (data.email && b.clientEmail && b.clientEmail.toLowerCase() === data.email.toLowerCase()) return true;
+      if (data.name && b.clientName && b.clientName.toLowerCase().includes(data.name.toLowerCase())) return true;
+      if (matchedClient) {
+        if (matchedClient.dni && b.clientDni === matchedClient.dni) return true;
+        if (matchedClient.alternateDni && b.clientDni === matchedClient.alternateDni) return true;
+        if (matchedClient.email && b.clientEmail && b.clientEmail.toLowerCase() === matchedClient.email.toLowerCase()) return true;
+        const mcPhone = (matchedClient.phone || '').replace(/\D/g, '');
+        if (mcPhone.length >= 8 && b.clientPhone && b.clientPhone.replace(/\D/g, '').endsWith(mcPhone.slice(-8))) return true;
+      }
+      return false;
+    };
+
+    // 1. Buscar si tiene reserva en la clase activa de esta sala
+    const inCurrentClass = classBookings.find(matchesBooking);
 
     if (inCurrentClass) {
       handlePerformCheckIn(inCurrentClass);
@@ -340,9 +371,7 @@ export const AdminKioskTab: React.FC<AdminKioskTabProps> = ({
 
     // 2. Buscar si tiene reserva en otra clase de ESTA MISMA SALA
     const inThisRoomBooking = safeBookings.find((b) => {
-      if (!b || b.status === 'cancelada') return false;
-      const matches = (b.clientDni === searchDni || (data.name && b.clientName?.toLowerCase() === data.name.toLowerCase()));
-      if (!matches) return false;
+      if (!matchesBooking(b)) return false;
       const cls = safeClasses.find((c) => c.id === b.classId);
       return cls && getClassRoomId(cls) === selectedRoomId;
     });
@@ -356,10 +385,7 @@ export const AdminKioskTab: React.FC<AdminKioskTabProps> = ({
     }
 
     // 3. ¡VALIDACIÓN CRUZADA DE SALAS! ¿Tiene reserva en OTRA sala?
-    const inOtherRoomBooking = safeBookings.find((b) => {
-      if (!b || b.status === 'cancelada') return false;
-      return (b.clientDni === searchDni || (data.name && b.clientName?.toLowerCase() === data.name.toLowerCase()));
-    });
+    const inOtherRoomBooking = safeBookings.find(matchesBooking);
 
     if (inOtherRoomBooking) {
       const otherCls = safeClasses.find((c) => c.id === inOtherRoomBooking.classId);
@@ -375,14 +401,16 @@ export const AdminKioskTab: React.FC<AdminKioskTabProps> = ({
     }
 
     // 4. Si no tiene reserva activa en ninguna clase ni sala para hoy: Mostrar AVISO de sin clase
-    const matchingClient = safeClients.find(
-      (c) => c && (c.dni === searchDni || (data.name && c.name?.toLowerCase() === data.name.toLowerCase()))
-    );
+    const matchingClient =
+      matchedClient ||
+      safeClients.find(
+        (c) => c && (c.dni === searchDoc || (data.name && c.name?.toLowerCase() === data.name.toLowerCase()))
+      );
 
     setCrossRoomAlert(null);
     setNoClassWarningAlert({
       client: matchingClient,
-      query: searchDni,
+      query: searchDoc || cleanDigits,
       rawName: data.name,
     });
     setFeedbackMessage(

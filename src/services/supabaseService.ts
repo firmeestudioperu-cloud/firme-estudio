@@ -4,8 +4,10 @@ import {
   BookingRecord,
   ClientProfile,
   CashTransaction,
+  ExpenseRecord,
   LeadRecord,
   AuthUser,
+  PaymentMethod,
   determineUserRole,
   findStaffByCredential,
 } from '../types';
@@ -13,8 +15,33 @@ import { MOCK_CLASSES } from '../data/mockData';
 import {
   INITIAL_CLIENTS,
   INITIAL_TRANSACTIONS,
+  INITIAL_EXPENSES,
   INITIAL_LEADS,
 } from '../data/adminMockData';
+
+export function getUpcomingDateForDay(dayAbbr?: string): string {
+  const dayMap: Record<string, number> = {
+    dom: 0,
+    lun: 1,
+    mar: 2,
+    mie: 3,
+    jue: 4,
+    vie: 5,
+    sab: 6,
+  };
+  const now = new Date();
+  const currentDay = now.getDay();
+  if (!dayAbbr || !(dayAbbr.toLowerCase() in dayMap)) {
+    return now.toISOString().split('T')[0];
+  }
+  const targetDay = dayMap[dayAbbr.toLowerCase()];
+  let diff = targetDay - currentDay;
+  if (diff < 0) {
+    diff += 7;
+  }
+  const targetDate = new Date(now.getTime() + diff * 24 * 60 * 60 * 1000);
+  return targetDate.toISOString().split('T')[0];
+}
 
 // Helper para convertir nombres snake_case de Postgres a camelCase de TypeScript
 export function mapDbClassToSession(row: any): ClassSession {
@@ -25,7 +52,7 @@ export function mapDbClassToSession(row: any): ClassSession {
     day: row.day,
     time: formattedTime,
     name: row.name,
-    instructor: row.instructor || row.instructor_name || 'Instructora FIRME',
+    instructor: row.instructor_name || row.instructor || 'Instructora FIRME',
     level: row.level || 'Principiante',
     classType: row.class_type || 'Reformer',
     duration: formattedDuration,
@@ -36,18 +63,24 @@ export function mapDbClassToSession(row: any): ClassSession {
 }
 
 export function mapSessionToDbClass(cls: ClassSession): any {
+  const durationNum = parseInt(cls.duration?.replace(/\D/g, '') || '50', 10) || 50;
+  const timeClean = cls.time?.length === 5 ? `${cls.time}:00` : (cls.time || '08:00:00');
   return {
     id: cls.id,
     day: cls.day,
-    time: cls.time,
+    start_time: timeClean,
     name: cls.name,
-    instructor: cls.instructor,
-    level: cls.level,
-    class_type: cls.classType,
-    duration: cls.duration,
-    total_spots: cls.totalSpots,
-    occupied_spots: cls.occupiedSpots,
-    focus: cls.focus,
+    instructor_name: cls.instructor || 'Instructora FIRME',
+    level: cls.level || 'Principiante',
+    class_type: cls.classType?.toLowerCase().includes('suspen')
+      ? 'Suspension'
+      : cls.classType?.toLowerCase().includes('mat')
+      ? 'Mat'
+      : 'Reformer',
+    duration_min: durationNum,
+    total_spots: cls.totalSpots || 8,
+    focus: cls.focus || '',
+    is_active: true,
   };
 }
 
@@ -58,13 +91,13 @@ export function mapDbBookingToRecord(row: any): BookingRecord {
     className: row.class_name,
     classTime: row.class_time,
     classDay: row.class_day,
-    instructor: row.instructor,
+    instructor: row.instructor_name || row.instructor || 'Instructora FIRME',
     clientName: row.client_name,
     clientEmail: row.client_email || '',
     clientPhone: row.client_phone || '',
     clientDni: row.client_dni || '',
     status: row.status,
-    bookedAt: row.booked_at ? new Date(row.booked_at).toLocaleDateString('es-PE') : 'Hoy',
+    bookedAt: row.created_at ? new Date(row.created_at).toLocaleDateString('es-PE') : 'Hoy',
     bedNumber: row.bed_number ?? undefined,
     isWaitlist: row.is_waitlist ?? false,
     medicalAlert: row.medical_alert ?? undefined,
@@ -73,24 +106,32 @@ export function mapDbBookingToRecord(row: any): BookingRecord {
   };
 }
 
-export function mapRecordToDbBooking(b: Partial<BookingRecord>): any {
-  return {
-    id: b.id,
+export function mapRecordToDbBooking(b: Partial<BookingRecord> & { scheduledDate?: string }): any {
+  const isUuid = b.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(b.id);
+  const scheduledDate = b.scheduledDate || getUpcomingDateForDay(b.classDay);
+
+  const payload: any = {
     class_id: b.classId,
     class_name: b.className,
     class_time: b.classTime,
     class_day: b.classDay,
-    instructor: b.instructor,
+    instructor_name: b.instructor || 'Instructora FIRME',
+    scheduled_date: scheduledDate,
     client_name: b.clientName,
-    client_email: b.clientEmail,
-    client_phone: b.clientPhone,
+    client_email: b.clientEmail || null,
+    client_phone: b.clientPhone || null,
     client_dni: b.clientDni,
     status: b.status || 'confirmada',
     bed_number: b.bedNumber,
     is_waitlist: b.isWaitlist || false,
-    medical_alert: b.medicalAlert,
-    check_in_time: b.checkInTime,
+    medical_alert: b.medicalAlert || null,
+    check_in_time: b.checkInTime || null,
   };
+
+  if (isUuid) {
+    payload.id = b.id;
+  }
+  return payload;
 }
 
 export function mapDbClientToProfile(row: any): ClientProfile {
@@ -113,8 +154,117 @@ export function mapDbClientToProfile(row: any): ClientProfile {
     documentType: row.document_type || 'dni',
     birthDate: row.birth_date,
     gender: row.gender || 'otro',
-    registrationMethod: row.registration_method || 'manual_smartfit',
+    registrationMethod: row.registration_method || 'manual_web',
   };
+}
+
+export function mapDbTxToTransaction(row: any): CashTransaction {
+  const tDate = row.transacted_at ? new Date(row.transacted_at) : new Date();
+  return {
+    id: row.id,
+    type: row.type,
+    concept: row.concept,
+    category: row.category,
+    amount: Number(row.amount),
+    paymentMethod: row.payment_method,
+    clientName: row.client_name || undefined,
+    receiptNumber: row.receipt_number || '',
+    date: tDate.toLocaleDateString('es-PE'),
+    time: tDate.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }),
+    notes: row.notes || undefined,
+  };
+}
+
+export function mapTxToDbTx(tx: Partial<CashTransaction>): any {
+  const isUuid = tx.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tx.id);
+  const payload: any = {
+    type: tx.type || 'ingreso',
+    concept: tx.concept || 'Operación de Caja',
+    category: tx.category || 'otro',
+    amount: tx.amount || 0,
+    payment_method: tx.paymentMethod || 'efectivo',
+    client_name: tx.clientName || null,
+    receipt_number: tx.receiptNumber || null,
+    receipt_type: tx.receiptNumber?.startsWith('F') ? 'factura' : (tx.receiptNumber?.startsWith('B') ? 'boleta' : 'ninguno'),
+    notes: tx.notes || null,
+    transacted_at: new Date().toISOString(),
+  };
+  if (isUuid) {
+    payload.id = tx.id;
+  }
+  return payload;
+}
+
+export function mapDbExpenseToRecord(row: any): ExpenseRecord {
+  const d = row.created_at ? new Date(row.created_at) : new Date();
+  return {
+    id: row.id,
+    description: row.description,
+    category: row.category,
+    amount: Number(row.amount),
+    date: d.toLocaleDateString('es-PE'),
+    recipient: row.recipient || '',
+    paymentMethod: row.payment_method || 'efectivo',
+    status: row.status === 'vencido' ? 'pendiente' : row.status,
+    receiptNumber: row.receipt_number || undefined,
+  };
+}
+
+export function mapExpenseToDb(exp: Partial<ExpenseRecord>): any {
+  const isUuid = exp.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(exp.id);
+  const payload: any = {
+    description: exp.description || 'Gasto operativo',
+    category: exp.category || 'otros',
+    amount: exp.amount || 0,
+    recipient: exp.recipient || '',
+    payment_method: exp.paymentMethod || 'efectivo',
+    status: exp.status || 'pendiente',
+    receipt_number: exp.receiptNumber || null,
+    paid_at: exp.status === 'pagado' ? new Date().toISOString() : null,
+  };
+  if (isUuid) {
+    payload.id = exp.id;
+  }
+  return payload;
+}
+
+export function mapDbLeadToRecord(row: any): LeadRecord {
+  const cDate = row.created_at ? new Date(row.created_at) : new Date();
+  let interestDisplay: LeadRecord['interest'] = 'Reformer';
+  if (row.interest === 'Suspension') interestDisplay = 'Suspensión';
+  else if (row.interest === 'Mat' || row.interest === 'Todos') interestDisplay = row.interest;
+
+  return {
+    id: row.id,
+    name: row.name,
+    phone: row.phone,
+    email: row.email || '',
+    channel: row.channel || 'whatsapp',
+    interest: interestDisplay,
+    status: row.status || 'nuevo',
+    trialDate: row.trial_date || undefined,
+    notes: row.notes || '',
+    createdAt: `${cDate.toLocaleDateString('es-PE')} ${cDate.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}`,
+  };
+}
+
+export function mapLeadToDb(lead: Partial<LeadRecord>): any {
+  const isUuid = lead.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(lead.id);
+  const cleanInterest = lead.interest === 'Suspensión' ? 'Suspension' : (lead.interest || 'Reformer');
+  const payload: any = {
+    name: lead.name,
+    phone: lead.phone,
+    email: lead.email || null,
+    channel: lead.channel || 'whatsapp',
+    interest: cleanInterest,
+    status: lead.status || 'nuevo',
+    notes: lead.notes || null,
+    trial_date: lead.trialDate || null,
+  };
+  if (isUuid) {
+    payload.id = lead.id;
+  }
+  return payload;
 }
 
 export const supabaseService = {
@@ -138,12 +288,43 @@ export const supabaseService = {
   },
 
   async updateClassSpots(classId: string, occupiedSpots: number): Promise<boolean> {
+    // La ocupación se calcula dinámicamente en Postgres por las vistas classes_today y classes_week
+    return true;
+  },
+
+  async createClass(cls: Omit<ClassSession, 'id'>): Promise<ClassSession | null> {
+    if (!isSupabaseConfigured() || !supabase) return null;
+    try {
+      const newId = `c-${cls.day}-${cls.time.replace(':', '')}-${Date.now().toString().slice(-4)}`;
+      const dbRow = mapSessionToDbClass({ ...cls, id: newId });
+      const { data, error } = await supabase.from('classes').insert([dbRow]).select().single();
+      if (error || !data) {
+        console.warn('Error al crear clase en Supabase:', error);
+        return null;
+      }
+      return mapDbClassToSession(data);
+    } catch (err) {
+      console.error('Excepción al crear clase en Supabase:', err);
+      return null;
+    }
+  },
+
+  async updateClass(cls: ClassSession): Promise<boolean> {
     if (!isSupabaseConfigured() || !supabase) return true;
     try {
-      const { error } = await supabase
-        .from('classes')
-        .update({ occupied_spots: occupiedSpots })
-        .eq('id', classId);
+      const dbRow = mapSessionToDbClass(cls);
+      delete dbRow.id;
+      const { error } = await supabase.from('classes').update(dbRow).eq('id', cls.id);
+      return !error;
+    } catch {
+      return false;
+    }
+  },
+
+  async deleteClass(classId: string): Promise<boolean> {
+    if (!isSupabaseConfigured() || !supabase) return true;
+    try {
+      const { error } = await supabase.from('classes').delete().eq('id', classId);
       return !error;
     } catch {
       return false;
@@ -167,7 +348,7 @@ export const supabaseService = {
     }
   },
 
-  async createBooking(booking: Omit<BookingRecord, 'id' | 'bookedAt' | 'status'>): Promise<BookingRecord | null> {
+  async createBooking(booking: Omit<BookingRecord, 'id' | 'bookedAt' | 'status'> & { id?: string; scheduledDate?: string }): Promise<BookingRecord | null> {
     if (!isSupabaseConfigured() || !supabase) {
       const fallback: BookingRecord = {
         ...booking,
@@ -178,20 +359,75 @@ export const supabaseService = {
       return fallback;
     }
     try {
+      let clientId: string | undefined = undefined;
+      if (booking.clientDni) {
+        const { data: clientRow } = await supabase
+          .from('clients')
+          .select('id')
+          .eq('dni', booking.clientDni.trim())
+          .maybeSingle();
+        if (clientRow?.id) {
+          clientId = clientRow.id;
+        } else if (booking.clientName) {
+          // Auto-registrar alumna si no existe para que quede vinculada en la base de datos
+          const { data: createdClient } = await supabase
+            .from('clients')
+            .insert({
+              name: booking.clientName,
+              dni: booking.clientDni.trim(),
+              email: booking.clientEmail?.trim() || null,
+              phone: booking.clientPhone?.trim() || '+51 900 000 000',
+              status: 'activo',
+              registration_method: 'manual_web',
+              medical_notes: booking.medicalAlert || null,
+            })
+            .select('id')
+            .maybeSingle();
+          if (createdClient?.id) {
+            clientId = createdClient.id;
+          }
+        }
+      }
+
       const dbRow = mapRecordToDbBooking({
         ...booking,
-        id: `b-${Date.now()}`,
         status: 'confirmada',
       });
-      const { data, error } = await supabase.from('bookings').insert([dbRow]).select().single();
-      if (error || !data) {
-        console.warn('Error al insertar reserva en Supabase:', error);
-        return null;
+      if (clientId) {
+        dbRow.client_id = clientId;
       }
+
+      const { data, error } = await supabase.from('bookings').insert([dbRow]).select().single();
+      if (error) {
+        let userMessage = error.message;
+        if (error.code === '23505') {
+          userMessage = 'Ya existe una reserva confirmada para este DNI en este horario y fecha.';
+        } else if (error.message?.includes('Capacidad máxima') || error.code === 'P0001') {
+          userMessage = 'La clase ha alcanzado su capacidad máxima de cupos.';
+        } else if (error.message?.includes('idx_bookings_active_bed') || error.message?.includes('cama')) {
+          userMessage = `La cama Reformer #${dbRow.bed_number || ''} ya está ocupada por otra alumna.`;
+        }
+        console.warn('Error al insertar reserva en Supabase:', error);
+        throw new Error(userMessage);
+      }
+      if (!data) return null;
       return mapDbBookingToRecord(data);
     } catch (err) {
       console.error('Excepción al crear reserva en Supabase:', err);
       return null;
+    }
+  },
+
+  async updateBookingStatus(bookingId: string, status: 'confirmada' | 'asistio' | 'cancelada'): Promise<boolean> {
+    if (!isSupabaseConfigured() || !supabase) return true;
+    try {
+      const { error } = await supabase
+        .from('bookings')
+        .update({ status, updated_at: new Date().toISOString() })
+        .eq('id', bookingId);
+      return !error;
+    } catch {
+      return false;
     }
   },
 
@@ -216,19 +452,69 @@ export const supabaseService = {
     }
 
     try {
-      // 1. Buscar la reserva más reciente del DNI que esté confirmada
-      const { data: bookingRows, error: searchError } = await supabase
+      const cleanDigits = trimmedDni.replace(/\D/g, '');
+
+      // 1. Buscar la reserva activa más reciente por DNI, Teléfono o Email
+      let query = supabase
         .from('bookings')
         .select('*')
-        .eq('client_dni', trimmedDni)
-        .neq('status', 'cancelada')
+        .neq('status', 'cancelada');
+
+      if (trimmedDni.includes('@')) {
+        query = query.ilike('client_email', trimmedDni);
+      } else if (cleanDigits.length >= 8) {
+        query = query.or(
+          `client_dni.eq.${trimmedDni},client_dni.eq.${cleanDigits},client_phone.ilike.%${cleanDigits.slice(-8)}%`
+        );
+      } else {
+        query = query.or(`client_dni.eq.${trimmedDni},id.eq.${trimmedDni}`);
+      }
+
+      let { data: bookingRows, error: searchError } = await query
         .order('created_at', { ascending: false })
         .limit(1);
+
+      // 1.1 Si no se encontró directamente en bookings, buscar si la persona existe en clients
+      if (!bookingRows || bookingRows.length === 0) {
+        let clientQuery = supabase.from('clients').select('*');
+        if (trimmedDni.includes('@')) {
+          clientQuery = clientQuery.ilike('email', trimmedDni);
+        } else if (cleanDigits.length >= 8) {
+          clientQuery = clientQuery.or(
+            `dni.eq.${trimmedDni},dni.eq.${cleanDigits},phone.ilike.%${cleanDigits.slice(-8)}%`
+          );
+        } else {
+          clientQuery = clientQuery.eq('dni', trimmedDni);
+        }
+
+        const { data: matchedClients } = await clientQuery.limit(1);
+
+        if (matchedClients && matchedClients.length > 0) {
+          const cli = matchedClients[0];
+          // Buscar reservas con cualquiera de sus identificadores registrados
+          const { data: crossBookings } = await supabase
+            .from('bookings')
+            .select('*')
+            .neq('status', 'cancelada')
+            .or(
+              `client_dni.eq.${cli.dni}${cli.email ? `,client_email.ilike.${cli.email}` : ''}${
+                cli.phone ? `,client_phone.ilike.%${cli.phone.replace(/\D/g, '').slice(-8)}%` : ''
+              }`
+            )
+            .order('created_at', { ascending: false })
+            .limit(1);
+
+          if (crossBookings && crossBookings.length > 0) {
+            bookingRows = crossBookings;
+            searchError = null;
+          }
+        }
+      }
 
       if (searchError || !bookingRows || bookingRows.length === 0) {
         return {
           success: false,
-          error: `No encontramos reserva activa para el DNI ${trimmedDni}. Acércate al counter de recepción.`,
+          error: `No encontramos reserva activa para ${trimmedDni}. Acércate al counter de recepción.`,
         };
       }
 
@@ -332,11 +618,421 @@ export const supabaseService = {
   async getClients(): Promise<ClientProfile[]> {
     if (!isSupabaseConfigured() || !supabase) return INITIAL_CLIENTS;
     try {
-      const { data, error } = await supabase.from('clients').select('*').order('name', { ascending: true });
-      if (error || !data || data.length === 0) return INITIAL_CLIENTS;
+      const { data, error } = await supabase
+        .from('clients_with_plan')
+        .select('*')
+        .order('name', { ascending: true });
+      if (error || !data || data.length === 0) {
+        const { data: rawData, error: rawError } = await supabase
+          .from('clients')
+          .select('*')
+          .order('name', { ascending: true });
+        if (rawError || !rawData || rawData.length === 0) return INITIAL_CLIENTS;
+        return rawData.map(mapDbClientToProfile);
+      }
       return data.map(mapDbClientToProfile);
     } catch {
       return INITIAL_CLIENTS;
+    }
+  },
+
+  async createClient(clientData: Omit<ClientProfile, 'id'>): Promise<ClientProfile | null> {
+    if (!isSupabaseConfigured() || !supabase) return null;
+    try {
+      const clientPayload: any = {
+        name: clientData.name,
+        email: clientData.email || null,
+        phone: clientData.phone || '',
+        dni: clientData.dni,
+        document_type: clientData.documentType || 'dni',
+        birth_date: clientData.birthDate || null,
+        gender: clientData.gender || 'otro',
+        emergency_contact: clientData.emergencyContact || null,
+        emergency_phone: clientData.emergencyPhone || null,
+        medical_notes: clientData.medicalNotes || null,
+        registration_method: clientData.registrationMethod || 'receptionist_desk',
+        status: clientData.status || 'activo',
+      };
+
+      const { data, error } = await supabase
+        .from('clients')
+        .upsert(clientPayload, { onConflict: 'dni' })
+        .select()
+        .single();
+
+      if (error || !data) {
+        console.warn('Error al crear cliente en Supabase:', error);
+        return null;
+      }
+
+      // Si tiene plan asignado, registrar en client_plans
+      if (clientData.currentPlan) {
+        await supabase.from('client_plans').insert({
+          client_id: data.id,
+          plan_name: clientData.currentPlan,
+          plan_type: clientData.planType || 'pack',
+          credits_initial: clientData.creditsLeft ?? 8,
+          credits_left: clientData.creditsLeft ?? 8,
+          is_active: true,
+        });
+      }
+
+      return mapDbClientToProfile({
+        ...data,
+        current_plan: clientData.currentPlan,
+        plan_type: clientData.planType,
+        credits_left: clientData.creditsLeft,
+      });
+    } catch (err) {
+      console.error('Excepción al crear cliente en Supabase:', err);
+      return null;
+    }
+  },
+
+  async updateClient(clientData: ClientProfile): Promise<boolean> {
+    if (!isSupabaseConfigured() || !supabase) return true;
+    try {
+      const clientPayload: any = {
+        name: clientData.name,
+        email: clientData.email || null,
+        phone: clientData.phone || '',
+        dni: clientData.dni,
+        document_type: clientData.documentType || 'dni',
+        birth_date: clientData.birthDate || null,
+        gender: clientData.gender || 'otro',
+        emergency_contact: clientData.emergencyContact || null,
+        emergency_phone: clientData.emergencyPhone || null,
+        medical_notes: clientData.medicalNotes || null,
+        status: clientData.status || 'activo',
+        updated_at: new Date().toISOString(),
+      };
+
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(clientData.id);
+      let query = supabase.from('clients').update(clientPayload);
+      if (isUuid) {
+        query = query.eq('id', clientData.id);
+      } else {
+        query = query.eq('dni', clientData.dni);
+      }
+
+      const { error } = await query;
+      if (error) {
+        console.warn('Error al actualizar cliente en Supabase:', error);
+        return false;
+      }
+
+      // Actualizar créditos en client_plans si se modificaron
+      if (clientData.creditsLeft !== undefined) {
+        const { data: clientRow } = await supabase
+          .from('clients')
+          .select('id')
+          .eq('dni', clientData.dni)
+          .maybeSingle();
+
+        if (clientRow?.id) {
+          const { data: activePlans } = await supabase
+            .from('client_plans')
+            .select('id')
+            .eq('client_id', clientRow.id)
+            .eq('is_active', true)
+            .order('created_at', { ascending: false })
+            .limit(1);
+
+          if (activePlans && activePlans.length > 0) {
+            await supabase
+              .from('client_plans')
+              .update({
+                credits_left: clientData.creditsLeft,
+                plan_name: clientData.currentPlan,
+              })
+              .eq('id', activePlans[0].id);
+          } else {
+            await supabase.from('client_plans').insert({
+              client_id: clientRow.id,
+              plan_name: clientData.currentPlan || 'Pack 8 Sesiones',
+              plan_type: clientData.planType || 'pack',
+              credits_initial: clientData.creditsLeft,
+              credits_left: clientData.creditsLeft,
+              is_active: true,
+            });
+          }
+        }
+      }
+
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
+  async deleteClient(clientId: string): Promise<boolean> {
+    if (!isSupabaseConfigured() || !supabase) return true;
+    try {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(clientId);
+      if (isUuid) {
+        const { error } = await supabase.from('clients').delete().eq('id', clientId);
+        return !error;
+      } else {
+        const { error } = await supabase.from('clients').delete().eq('dni', clientId);
+        return !error;
+      }
+    } catch {
+      return false;
+    }
+  },
+
+  // =========================================================================
+  // 5.1 CAJA & TRANSACCIONES POS
+  // =========================================================================
+  async getCashTransactions(): Promise<CashTransaction[]> {
+    if (!isSupabaseConfigured() || !supabase) return INITIAL_TRANSACTIONS;
+    try {
+      const { data, error } = await supabase
+        .from('cash_transactions')
+        .select('*')
+        .order('transacted_at', { ascending: false });
+      if (error || !data || data.length === 0) return INITIAL_TRANSACTIONS;
+      return data.map(mapDbTxToTransaction);
+    } catch {
+      return INITIAL_TRANSACTIONS;
+    }
+  },
+
+  async createCashTransaction(tx: Omit<CashTransaction, 'id'>): Promise<CashTransaction | null> {
+    if (!isSupabaseConfigured() || !supabase) return null;
+    try {
+      const dbRow = mapTxToDbTx(tx);
+      const { data, error } = await supabase.from('cash_transactions').insert([dbRow]).select().single();
+      if (error || !data) {
+        console.warn('Error al registrar transacción en Supabase:', error);
+        return null;
+      }
+      return mapDbTxToTransaction(data);
+    } catch (err) {
+      console.error('Excepción al registrar transacción en Supabase:', err);
+      return null;
+    }
+  },
+
+  async updateCashTransaction(tx: CashTransaction): Promise<boolean> {
+    if (!isSupabaseConfigured() || !supabase) return true;
+    try {
+      const dbRow = mapTxToDbTx(tx);
+      delete dbRow.transacted_at;
+      const { error } = await supabase.from('cash_transactions').update(dbRow).eq('id', tx.id);
+      return !error;
+    } catch {
+      return false;
+    }
+  },
+
+  async deleteCashTransaction(id: string): Promise<boolean> {
+    if (!isSupabaseConfigured() || !supabase) return true;
+    try {
+      const { error } = await supabase.from('cash_transactions').delete().eq('id', id);
+      return !error;
+    } catch {
+      return false;
+    }
+  },
+
+  // =========================================================================
+  // 5.2 GASTOS OPERATIVOS
+  // =========================================================================
+  async getExpenses(): Promise<ExpenseRecord[]> {
+    if (!isSupabaseConfigured() || !supabase) return INITIAL_EXPENSES;
+    try {
+      const { data, error } = await supabase
+        .from('expenses')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (error || !data || data.length === 0) return INITIAL_EXPENSES;
+      return data.map(mapDbExpenseToRecord);
+    } catch {
+      return INITIAL_EXPENSES;
+    }
+  },
+
+  async createExpense(exp: Omit<ExpenseRecord, 'id'>): Promise<ExpenseRecord | null> {
+    if (!isSupabaseConfigured() || !supabase) return null;
+    try {
+      const dbRow = mapExpenseToDb(exp);
+      const { data, error } = await supabase.from('expenses').insert([dbRow]).select().single();
+      if (error || !data) {
+        console.warn('Error al registrar gasto en Supabase:', error);
+        return null;
+      }
+      return mapDbExpenseToRecord(data);
+    } catch (err) {
+      console.error('Excepción al registrar gasto en Supabase:', err);
+      return null;
+    }
+  },
+
+  async updateExpense(exp: ExpenseRecord): Promise<boolean> {
+    if (!isSupabaseConfigured() || !supabase) return true;
+    try {
+      const dbRow = mapExpenseToDb(exp);
+      const { error } = await supabase.from('expenses').update(dbRow).eq('id', exp.id);
+      return !error;
+    } catch {
+      return false;
+    }
+  },
+
+  async deleteExpense(id: string): Promise<boolean> {
+    if (!isSupabaseConfigured() || !supabase) return true;
+    try {
+      const { error } = await supabase.from('expenses').delete().eq('id', id);
+      return !error;
+    } catch {
+      return false;
+    }
+  },
+
+  // =========================================================================
+  // 5.3 PROSPECTOS / CRM LEADS
+  // =========================================================================
+  async getLeads(): Promise<LeadRecord[]> {
+    if (!isSupabaseConfigured() || !supabase) return INITIAL_LEADS;
+    try {
+      const { data, error } = await supabase
+        .from('leads')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (error || !data || data.length === 0) return INITIAL_LEADS;
+      return data.map(mapDbLeadToRecord);
+    } catch {
+      return INITIAL_LEADS;
+    }
+  },
+
+  async createLead(lead: Omit<LeadRecord, 'id' | 'createdAt'>): Promise<LeadRecord | null> {
+    if (!isSupabaseConfigured() || !supabase) return null;
+    try {
+      const dbRow = mapLeadToDb(lead);
+      const { data, error } = await supabase.from('leads').insert([dbRow]).select().single();
+      if (error || !data) {
+        console.warn('Error al registrar prospecto en Supabase:', error);
+        return null;
+      }
+      return mapDbLeadToRecord(data);
+    } catch (err) {
+      console.error('Excepción al registrar prospecto en Supabase:', err);
+      return null;
+    }
+  },
+
+  async updateLead(lead: LeadRecord): Promise<boolean> {
+    if (!isSupabaseConfigured() || !supabase) return true;
+    try {
+      const dbRow = mapLeadToDb(lead);
+      const { error } = await supabase.from('leads').update(dbRow).eq('id', lead.id);
+      return !error;
+    } catch {
+      return false;
+    }
+  },
+
+  async deleteLead(id: string): Promise<boolean> {
+    if (!isSupabaseConfigured() || !supabase) return true;
+    try {
+      const { error } = await supabase.from('leads').delete().eq('id', id);
+      return !error;
+    } catch {
+      return false;
+    }
+  },
+
+  // =========================================================================
+  // 5.4 COMPRA DE PLANES / PASARELA ONLINE
+  // =========================================================================
+  async recordPlanPurchase(details: {
+    clientDni: string;
+    clientName: string;
+    clientEmail: string;
+    planName: string;
+    planType: 'ilimitado' | 'pack' | 'clase_suelta' | 'prueba';
+    credits: number;
+    amountPaid: number;
+    paymentMethod: PaymentMethod;
+    receiptNumber: string;
+  }): Promise<{ success: boolean; transactionId?: string; planId?: string }> {
+    if (!isSupabaseConfigured() || !supabase) return { success: true };
+    try {
+      let clientId: string | undefined;
+      const { data: clientRow } = await supabase
+        .from('clients')
+        .select('id')
+        .eq('dni', details.clientDni.trim())
+        .maybeSingle();
+
+      if (clientRow?.id) {
+        clientId = clientRow.id;
+      } else {
+        const { data: newClient } = await supabase
+          .from('clients')
+          .insert({
+            name: details.clientName,
+            email: details.clientEmail,
+            dni: details.clientDni,
+            phone: '+51 900 000 000',
+            status: 'activo',
+            registration_method: 'manual_web',
+          })
+          .select('id')
+          .single();
+        if (newClient?.id) clientId = newClient.id;
+      }
+
+      let clientPlanId: string | undefined;
+      if (clientId) {
+        const { data: newPlan } = await supabase
+          .from('client_plans')
+          .insert({
+            client_id: clientId,
+            plan_name: details.planName,
+            plan_type: details.planType,
+            credits_initial: details.credits,
+            credits_left: details.credits,
+            price_paid: details.amountPaid,
+            payment_method: details.paymentMethod,
+            is_active: true,
+          })
+          .select('id')
+          .single();
+        if (newPlan?.id) clientPlanId = newPlan.id;
+      }
+
+      const receiptType = details.receiptNumber.startsWith('F') ? 'factura' : 'boleta';
+      const category = details.planType === 'clase_suelta' ? 'clase_suelta' : (details.planType === 'pack' ? 'pack_clases' : 'membresia');
+
+      const { data: txData } = await supabase
+        .from('cash_transactions')
+        .insert({
+          type: 'ingreso',
+          concept: `Venta Web: ${details.planName}`,
+          category,
+          amount: details.amountPaid,
+          payment_method: details.paymentMethod,
+          client_id: clientId || null,
+          client_name: details.clientName,
+          client_plan_id: clientPlanId || null,
+          receipt_type: receiptType,
+          receipt_number: details.receiptNumber,
+          notes: `Pago procesado online para DNI ${details.clientDni}`,
+        })
+        .select('id')
+        .single();
+
+      return {
+        success: true,
+        transactionId: txData?.id,
+        planId: clientPlanId,
+      };
+    } catch (err) {
+      console.error('Error al registrar compra de plan en Supabase:', err);
+      return { success: false };
     }
   },
 
@@ -443,28 +1139,51 @@ export const supabaseService = {
       // Registrar también en tabla public.clients si es alumna
       if (role === 'client') {
         try {
-          await supabase.from('clients').upsert(
-            {
-              name: authUser.name,
-              email: authUser.email,
-              phone: authUser.phone,
-              dni: authUser.dni,
-              current_plan: authUser.planName,
+          const { data: insertedClient } = await supabase
+            .from('clients')
+            .upsert(
+              {
+                auth_user_id: data.user?.id || null,
+                name: authUser.name,
+                email: authUser.email,
+                phone: authUser.phone,
+                dni: authUser.dni,
+                status: 'activo',
+                emergency_contact: authUser.emergencyContact || null,
+                emergency_phone: authUser.emergencyPhone || null,
+                medical_notes: authUser.medicalNotes || null,
+                document_type: authUser.documentType || 'dni',
+                birth_date: authUser.birthDate || null,
+                gender: authUser.gender || 'otro',
+                registration_method: authUser.registrationMethod || 'manual_web',
+              },
+              { onConflict: 'dni' }
+            )
+            .select('id')
+            .single();
+
+          if (insertedClient?.id) {
+            await supabase.from('client_plans').insert({
+              client_id: insertedClient.id,
+              plan_name: authUser.planName || 'Alumna Registrada',
               plan_type: authUser.planName?.toLowerCase().includes('ilimitad') ? 'ilimitado' : 'pack',
+              credits_initial: authUser.creditsLeft ?? 0,
               credits_left: authUser.creditsLeft ?? 0,
-              status: 'activo',
-              emergency_contact: authUser.emergencyContact,
-              emergency_phone: authUser.emergencyPhone,
-              medical_notes: authUser.medicalNotes,
-              document_type: authUser.documentType,
-              birth_date: authUser.birthDate,
-              gender: authUser.gender,
-              registration_method: authUser.registrationMethod,
-            },
-            { onConflict: 'dni' }
-          );
-        } catch {
-          // ignore
+              is_active: true,
+            });
+
+            if (data.user?.id) {
+              await supabase.from('user_profiles').upsert({
+                id: data.user.id,
+                client_id: insertedClient.id,
+                role: 'client',
+                role_title: 'Alumna',
+                experience_level: authUser.experienceLevel || 'Principiante',
+              });
+            }
+          }
+        } catch (clientErr) {
+          console.warn('Aviso al sincronizar cliente en Supabase:', clientErr);
         }
       }
 
@@ -727,28 +1446,76 @@ export const supabaseService = {
   },
 
   async saveClientProfile(profile: Partial<AuthUser>): Promise<boolean> {
-    if (!supabase) return false;
+    if (!supabase || !isSupabaseConfigured()) return false;
     try {
-      await supabase.from('clients').upsert(
-        {
-          name: profile.name,
-          email: profile.email,
-          phone: profile.phone,
-          dni: profile.dni,
-          current_plan: profile.planName,
-          credits_left: profile.creditsLeft,
-          status: 'activo',
-          emergency_contact: profile.emergencyContact,
-          emergency_phone: profile.emergencyPhone,
-          medical_notes: profile.medicalNotes,
-          document_type: profile.documentType,
-          birth_date: profile.birthDate,
-          gender: profile.gender,
-        },
-        { onConflict: 'dni' }
-      );
+      const clientPayload: any = {
+        name: profile.name,
+        phone: profile.phone || '',
+        status: 'activo',
+        emergency_contact: profile.emergencyContact || null,
+        emergency_phone: profile.emergencyPhone || null,
+        medical_notes: profile.medicalNotes || null,
+        document_type: profile.documentType || 'dni',
+        birth_date: profile.birthDate || null,
+        gender: profile.gender || 'otro',
+        share_in_leaderboard: profile.shareInLeaderboard ?? true,
+        receive_marketing_updates: profile.receiveMarketingUpdates ?? true,
+        updated_at: new Date().toISOString(),
+      };
+      if (profile.email) clientPayload.email = profile.email.trim().toLowerCase();
+      if (profile.dni) clientPayload.dni = profile.dni.trim();
+
+      const { data: clientRow, error: clientErr } = await supabase
+        .from('clients')
+        .upsert(clientPayload, { onConflict: 'dni' })
+        .select('id')
+        .single();
+
+      if (clientErr) {
+        console.warn('Error guardando perfil de cliente en Supabase:', clientErr.message);
+        return false;
+      }
+
+      // Si tiene plan asignado, registrar o actualizar en client_plans
+      if (clientRow?.id && (profile.planName || profile.creditsLeft !== undefined)) {
+        const planName = profile.planName || 'Pase Regular';
+        const planType = planName.toLowerCase().includes('ilimitad') ? 'ilimitado' : 'pack';
+        const credits = profile.creditsLeft ?? 8;
+
+        const { data: existingPlans } = await supabase
+          .from('client_plans')
+          .select('id')
+          .eq('client_id', clientRow.id)
+          .eq('is_active', true)
+          .order('created_at', { ascending: false })
+          .limit(1);
+
+        if (existingPlans && existingPlans.length > 0) {
+          await supabase
+            .from('client_plans')
+            .update({
+              plan_name: planName,
+              plan_type: planType,
+              credits_left: credits,
+            })
+            .eq('id', existingPlans[0].id);
+        } else {
+          await supabase
+            .from('client_plans')
+            .insert({
+              client_id: clientRow.id,
+              plan_name: planName,
+              plan_type: planType,
+              credits_initial: credits,
+              credits_left: credits,
+              is_active: true,
+            });
+        }
+      }
+
       return true;
-    } catch {
+    } catch (err) {
+      console.error('Excepción en saveClientProfile:', err);
       return false;
     }
   },

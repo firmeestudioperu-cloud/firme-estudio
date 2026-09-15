@@ -19,6 +19,8 @@ import { StudioErrorBoundary } from './components/StudioErrorBoundary';
 import { useToast } from './hooks/useToast';
 import { useStudioData } from './hooks/useStudioData';
 import { useStudioAuth } from './hooks/useStudioAuth';
+import { supabaseService } from './services/supabaseService';
+import { isSupabaseConfigured } from './lib/supabase';
 
 // Types
 import {
@@ -183,7 +185,11 @@ export default function App() {
             lastVisit: 'Recién registrado',
             emergencyContact: user.emergencyContact || '',
             emergencyPhone: user.emergencyPhone || '',
-            medicalNotes: user.healthConditions?.join(', ') || user.medicalNotes || '',
+            medicalNotes: Array.isArray(user.healthConditions)
+              ? user.healthConditions.join(', ')
+              : typeof user.healthConditions === 'string' && user.healthConditions
+              ? user.healthConditions
+              : user.medicalNotes || '',
             documentType: user.documentType || 'dni',
             birthDate: user.birthDate,
             gender: user.gender,
@@ -461,6 +467,21 @@ export default function App() {
       )
     );
 
+    if (isSupabaseConfigured()) {
+      const target = bookingsList.find((b) => b.id === bookingId);
+      if (target?.clientDni) {
+        supabaseService.performTotemCheckIn(target.clientDni).catch((err) => {
+          console.warn('Error en checkin Supabase:', err);
+        });
+      } else {
+        supabaseService.updateBookingStatus(bookingId, 'asistio').then(() => {
+          supabaseService.assignBed(bookingId, assignedBed);
+        }).catch((err) => {
+          console.warn('Error en checkin Supabase:', err);
+        });
+      }
+    }
+
     handleGainExp(150, `Check-in en Sala Realizado (Cama #${assignedBed})`);
   };
 
@@ -536,10 +557,12 @@ export default function App() {
       );
 
       if (session) {
-        const medicalSummary = clientData?.healthConditions?.length
+        const medicalSummary = Array.isArray(clientData?.healthConditions) && clientData.healthConditions.length
           ? `${clientData.healthConditions.join(', ')}${
               clientData.medicalNotes ? ` — Nota: ${clientData.medicalNotes}` : ''
             }`
+          : typeof clientData?.healthConditions === 'string' && clientData.healthConditions
+          ? clientData.healthConditions
           : undefined;
 
         const newRecord: BookingRecord = {
@@ -566,6 +589,25 @@ export default function App() {
           bedNumber: clientData?.selectedBed || 3,
         };
         setBookingsList((prev) => [newRecord, ...prev]);
+
+        if (isSupabaseConfigured()) {
+          supabaseService.createBooking(newRecord).then((res) => {
+            if (!res) {
+              showToast(
+                'Aviso de Guardado',
+                'La reserva se guardó localmente, pero no se pudo sincronizar con la base de datos en la nube.',
+                true
+              );
+            }
+          }).catch((err) => {
+            console.warn('Error sincronizando reserva con Supabase:', err);
+            showToast(
+              'Error al Sincronizar Reserva',
+              `Fallo al enviar la reserva a Supabase: ${err?.message || 'Error de conexión'}`,
+              true
+            );
+          });
+        }
 
         if (!currentUser && clientData) {
           const { role, roleTitle } = determineUserRole(clientData.name, clientData.email);
@@ -618,8 +660,25 @@ export default function App() {
                 emergencyContact: clientData?.emergencyContact
                   ? `${clientData.emergencyContact} ${clientData.emergencyPhone ? `(${clientData.emergencyPhone})` : ''}`.trim()
                   : '',
-                medicalNotes: clientData?.medicalNotes || (clientData?.healthConditions?.join(', ') ?? ''),
+                medicalNotes: clientData?.medicalNotes || (Array.isArray(clientData?.healthConditions) ? clientData.healthConditions.join(', ') : (typeof clientData?.healthConditions === 'string' ? clientData.healthConditions : '')),
               };
+              if (isSupabaseConfigured()) {
+                supabaseService.createClient(newClientProfile).then((res) => {
+                  if (!res) {
+                    showToast(
+                      'Aviso de Alumna',
+                      'Perfil guardado en el navegador, pero no se pudo registrar en la base de datos.',
+                      true
+                    );
+                  }
+                }).catch((err) => {
+                  showToast(
+                    'Error al Guardar Alumna',
+                    `Fallo al sincronizar alumna con Supabase: ${err?.message || 'Error de conexión'}`,
+                    true
+                  );
+                });
+              }
               return [newClientProfile, ...prev];
             } else {
               return prev.map((c) =>
@@ -656,6 +715,25 @@ export default function App() {
         c.id === classId ? { ...c, occupiedSpots: Math.max(0, c.occupiedSpots - 1) } : c
       )
     );
+
+    // Cancelar en la lista de reservas y sincronizar con Supabase
+    const activeBooking = bookingsList.find(
+      (b) => b.classId === classId && b.status !== 'cancelada'
+    );
+    if (activeBooking) {
+      setBookingsList((prev) =>
+        prev.map((b) => (b.id === activeBooking.id ? { ...b, status: 'cancelada' } : b))
+      );
+      if (isSupabaseConfigured()) {
+        supabaseService.updateBookingStatus(activeBooking.id, 'cancelada').then((success) => {
+          if (!success) {
+            showToast('Aviso de Cancelación', 'La reserva se canceló en pantalla pero no se pudo sincronizar con la nube.', true);
+          }
+        }).catch((err) => {
+          showToast('Error de Cancelación', `Fallo al sincronizar con la base de datos: ${err?.message || 'Error'}`, true);
+        });
+      }
+    }
 
     if (alertClassIds.has(classId)) {
       showToast(
@@ -834,6 +912,40 @@ export default function App() {
         return [newClient, ...prev];
       }
     });
+
+    if (isSupabaseConfigured()) {
+      supabaseService.recordPlanPurchase({
+        clientDni: details.clientDni,
+        clientName: details.clientName,
+        clientEmail: details.clientEmail,
+        planName: plan.name,
+        planType:
+          plan.id === 'clase-suelta'
+            ? 'clase_suelta'
+            : plan.id === 'ilimitada'
+            ? 'ilimitado'
+            : 'pack',
+        credits,
+        amountPaid: details.amountPaid,
+        paymentMethod: details.paymentMethod,
+        receiptNumber: details.receiptNumber,
+      }).then((res) => {
+        if (!res || !res.success) {
+          showToast(
+            'Aviso de Membresía',
+            'El pago fue registrado, pero no se pudo guardar el plan en la base de datos en la nube.',
+            true
+          );
+        }
+      }).catch((err) => {
+        console.warn('Aviso sincronizando plan con Supabase:', err);
+        showToast(
+          'Error al Registrar Membresía',
+          `Fallo de sincronización con la nube: ${err?.message || 'Error de conexión'}`,
+          true
+        );
+      });
+    }
 
     showToast(
       '¡Suscripción Activada con Éxito!',
@@ -1171,8 +1283,23 @@ export default function App() {
       {/* Footer */}
       <Footer onSelectTab={handleSelectTab} />
 
-      {/* Modals with Lazy Loading */}
-      <Suspense fallback={null}>
+      {/* Modals with Lazy Loading protected by Error Boundary */}
+      <StudioErrorBoundary
+        fallbackTitle="Ventana en Recuperación"
+        fallbackMessage="Ocurrió un inconveniente temporal al cargar el modal. Puedes cerrarlo de manera segura sin interrumpir tu navegación."
+        onReset={() => {
+          setIsCheckInModalOpen(false);
+          setIsEditProfileOpen(false);
+          setBookingModalData(null);
+          setIsGoogleAuthOpen(false);
+          setSelectedPlanForCheckout(null);
+          setIsStudentLevelOpen(false);
+          setIsKioskModalOpen(false);
+          setIsQrModalOpen(false);
+          setIsBiomechanicsQuizOpen(false);
+        }}
+      >
+        <Suspense fallback={null}>
         {bookingModalData && (
           <BookingModal
             data={bookingModalData}
@@ -1192,12 +1319,17 @@ export default function App() {
               setScannedNameParam(null);
             }}
             currentUser={currentUser}
-            userBookings={bookingsList.filter(
-              (b) =>
-                currentUser &&
-                (b.clientEmail.toLowerCase() === currentUser.email.toLowerCase() ||
-                  b.clientName.toLowerCase().includes(currentUser.name.toLowerCase().split(' ')[0]))
-            )}
+            userBookings={bookingsList.filter((b) => {
+              if (!currentUser || !b) return false;
+              const userDni = currentUser.dni?.trim();
+              const userEmail = currentUser.email?.trim().toLowerCase();
+              const userFirstName = (currentUser.name || '').trim().toLowerCase().split(' ')[0];
+
+              if (userDni && b.clientDni && b.clientDni === userDni) return true;
+              if (userEmail && b.clientEmail && b.clientEmail.toLowerCase() === userEmail) return true;
+              if (userFirstName && b.clientName && b.clientName.toLowerCase().includes(userFirstName)) return true;
+              return false;
+            })}
             allBookings={bookingsList}
             scannedDni={scannedDniParam}
             scannedName={scannedNameParam}
@@ -1310,6 +1442,7 @@ export default function App() {
           onOpenBiomechanicsQuiz={() => setIsBiomechanicsQuizOpen(true)}
         />
       </Suspense>
+      </StudioErrorBoundary>
 
       {/* Floating Action Buttons */}
       <FloatingAdminButton

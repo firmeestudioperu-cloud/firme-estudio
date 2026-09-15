@@ -55,11 +55,27 @@ export const ClientCheckInModal: React.FC<ClientCheckInModalProps> = ({
   const [assignedBed, setAssignedBed] = useState<number | null>(null);
 
   const relevantBookings = React.useMemo(() => {
-    if (currentUser) return userBookings;
+    const pool = allBookings && allBookings.length > 0 ? allBookings : userBookings;
     if (scannedDni) {
-      return (allBookings.length > 0 ? allBookings : userBookings).filter(
+      const matchByDni = pool.filter(
         (b) => b && b.clientDni === scannedDni && b.status !== 'cancelada'
       );
+      if (matchByDni.length > 0) return matchByDni;
+    }
+    if (currentUser) {
+      const userDni = currentUser.dni?.trim();
+      const userEmail = currentUser.email?.trim().toLowerCase();
+      const userFirstName = (currentUser.name || '').trim().toLowerCase().split(' ')[0];
+
+      const matched = pool.filter((b) => {
+        if (!b || b.status === 'cancelada') return false;
+        if (userDni && b.clientDni && b.clientDni === userDni) return true;
+        if (userEmail && b.clientEmail && b.clientEmail.toLowerCase() === userEmail) return true;
+        if (userFirstName && b.clientName && b.clientName.toLowerCase().includes(userFirstName)) return true;
+        return false;
+      });
+      if (matched.length > 0) return matched;
+      return userBookings;
     }
     return [];
   }, [currentUser, userBookings, allBookings, scannedDni]);
@@ -101,7 +117,7 @@ export const ClientCheckInModal: React.FC<ClientCheckInModalProps> = ({
             <span>Kiosco & Check-in Alumno</span>
           </div>
           <h2 className="font-fraunces text-2xl sm:text-3xl text-[#1A1815]">
-            {currentUser ? `Hola, ${currentUser.name.split(' ')[0]}` : 'Check-in y Mi Cuenta'}
+            {currentUser ? `Hola, ${(currentUser.name || 'Alumna').split(' ')[0]}` : 'Check-in y Mi Cuenta'}
           </h2>
           <p className="text-xs sm:text-sm text-[#6B655C] mt-1">
             {currentUser
@@ -263,17 +279,17 @@ export const ClientCheckInModal: React.FC<ClientCheckInModalProps> = ({
                 {currentUser.avatar ? (
                   <img
                     src={currentUser.avatar}
-                    alt={currentUser.name}
+                    alt={currentUser.name || 'Alumna'}
                     className="w-12 h-12 rounded-full object-cover border border-[#E4DED4]"
                   />
                 ) : (
                   <div className="w-12 h-12 rounded-full bg-[#B5654A] text-white flex items-center justify-center font-fraunces text-lg">
-                    {currentUser.name.charAt(0)}
+                    {(currentUser.name || 'U').charAt(0).toUpperCase()}
                   </div>
                 )}
                 <div>
                   <div className="font-medium text-sm text-[#1A1815] flex items-center gap-1.5 flex-wrap">
-                    <span>{currentUser.name}</span>
+                    <span>{currentUser.name || 'Alumna'}</span>
                     <span
                       className={`text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.2 rounded-full ${
                         currentUser.role === 'owner_dev'
@@ -451,7 +467,11 @@ export const ClientCheckInModal: React.FC<ClientCheckInModalProps> = ({
                   <div className="flex justify-between">
                     <span className="text-[#6B655C]">Condiciones posturales:</span>
                     <span className="font-medium text-emerald-700">
-                      {currentUser.healthConditions?.join(', ') || 'Apto sin lesiones reportadas'}
+                      {Array.isArray(currentUser.healthConditions)
+                        ? currentUser.healthConditions.join(', ')
+                        : typeof currentUser.healthConditions === 'string' && currentUser.healthConditions
+                        ? currentUser.healthConditions
+                        : 'Apto sin lesiones reportadas'}
                     </span>
                   </div>
                 </div>
