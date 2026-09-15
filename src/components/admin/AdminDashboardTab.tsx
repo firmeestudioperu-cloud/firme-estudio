@@ -22,6 +22,7 @@ import {
   ExpenseRecord,
   LeadRecord,
   AdminSubTab,
+  CashRegisterState,
 } from '../../types';
 import { WeeklyOccupancyBarChart } from './WeeklyOccupancyBarChart';
 
@@ -32,25 +33,33 @@ interface AdminDashboardTabProps {
   transactions: CashTransaction[];
   expenses: ExpenseRecord[];
   leads: LeadRecord[];
-  onNavigateTab: (tab: AdminSubTab) => void;
+  cashRegister?: CashRegisterState;
+  onNavigateTab?: (tab: AdminSubTab) => void;
+  onNavigateToSchedule?: () => void;
+  onAddManualBooking?: (booking: Omit<BookingRecord, 'id' | 'bookedAt'>) => void;
   onQuickOpenCashModal?: () => void;
   onQuickOpenClassModal?: () => void;
   onQuickOpenClientModal?: () => void;
   onQuickOpenExpenseModal?: () => void;
+  onQuickOpenScannerModal?: () => void;
 }
 
 export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({
-  classes,
-  bookings,
-  clients,
-  transactions,
-  expenses,
-  leads,
+  classes = [],
+  bookings = [],
+  clients = [],
+  transactions = [],
+  expenses = [],
+  leads = [],
+  cashRegister,
   onNavigateTab,
+  onNavigateToSchedule,
+  onAddManualBooking,
   onQuickOpenCashModal,
   onQuickOpenClassModal,
   onQuickOpenClientModal,
   onQuickOpenExpenseModal,
+  onQuickOpenScannerModal,
 }) => {
   // Calculations
   const todayStr = '02/09/2026';
@@ -98,35 +107,35 @@ export const AdminDashboardTab: React.FC<AdminDashboardTabProps> = ({
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={() => (onQuickOpenCashModal ? onQuickOpenCashModal() : onNavigateTab('caja'))}
+              onClick={() => (onQuickOpenCashModal ? onQuickOpenCashModal() : onNavigateTab ? onNavigateTab('caja') : undefined)}
               className="bg-[#B5654A] hover:bg-[#9A5340] text-[#FAF8F5] px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors shadow-xs inline-flex items-center gap-1.5 cursor-pointer"
             >
               <Wallet className="w-3.5 h-3.5" />
-              <span>+ Cobro en Caja</span>
+              <span>Cobro en Caja</span>
             </button>
             <button
               type="button"
-              onClick={() => (onQuickOpenClientModal ? onQuickOpenClientModal() : onNavigateTab('clientes'))}
+              onClick={() => (onQuickOpenClientModal ? onQuickOpenClientModal() : onNavigateTab ? onNavigateTab('clientes') : undefined)}
               className="bg-[#1A1815] hover:bg-black text-[#FAF8F5] px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors shadow-xs inline-flex items-center gap-1.5 cursor-pointer"
             >
               <Users className="w-3.5 h-3.5" />
-              <span>+ Nuevo Alumno</span>
+              <span>Nuevo Alumno</span>
             </button>
             <button
               type="button"
-              onClick={() => (onQuickOpenExpenseModal ? onQuickOpenExpenseModal() : onNavigateTab('gastos'))}
+              onClick={() => (onQuickOpenExpenseModal ? onQuickOpenExpenseModal() : onNavigateTab ? onNavigateTab('gastos') : undefined)}
               className="bg-[#EFE9DF] hover:bg-[#E4DED4] text-[#1A1815] px-3 py-2 rounded-xl text-xs font-semibold transition-colors border border-[#DDD5C9] inline-flex items-center gap-1.5 cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
-              <span>+ Registrar Gasto</span>
+              <span>Registrar Gasto</span>
             </button>
             <button
               type="button"
-              onClick={() => (onQuickOpenClassModal ? onQuickOpenClassModal() : onNavigateTab('agenda'))}
+              onClick={() => (onQuickOpenClassModal ? onQuickOpenClassModal() : onNavigateTab ? onNavigateTab('agenda') : undefined)}
               className="bg-[#EFE9DF] hover:bg-[#E4DED4] text-[#1A1815] px-3 py-2 rounded-xl text-xs font-semibold transition-colors border border-[#DDD5C9] inline-flex items-center gap-1.5 cursor-pointer"
             >
               <Calendar className="w-3.5 h-3.5" />
-              <span>+ Nueva Clase</span>
+              <span>Nueva Clase</span>
             </button>
           </div>
         </div>

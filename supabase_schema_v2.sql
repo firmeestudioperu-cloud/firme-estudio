@@ -1,4 +1,4 @@
-﻿-- ============================================================
+-- ============================================================
 -- FIRME ESTUDIO-PILATES — BASE DE DATOS PRODUCCION
 -- PostgreSQL 15+ (Supabase)
 -- Sede: San Juan de Lurigancho (SJL), Lima, Peru
@@ -231,6 +231,149 @@ CREATE TRIGGER trg_bookings_upd
 COMMENT ON TABLE  public.bookings IS 'Reservas con fecha especifica. UNIQUE evita doble reserva por dia.';
 COMMENT ON COLUMN public.bookings.scheduled_date IS 'Fecha concreta de la sesion (no solo dia de semana).';
 COMMENT ON COLUMN public.bookings.check_in_time IS 'Hora exacta del Totem SJL o recepcion.';
+
+-- Indice unico parcial: Previene colision de camas Reformer (1-8) en tiempo real
+CREATE UNIQUE INDEX IF NOT EXISTS idx_bookings_active_bed
+  ON public.bookings(class_id, scheduled_date, bed_number)
+  WHERE status != 'cancelada' AND bed_number IS NOT NULL;
+
+-- Trigger: Control estricto de aforo maximo de la clase
+CREATE OR REPLACE FUNCTION public.fn_check_class_capacity()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER AS $$
+DECLARE
+  v_total_spots SMALLINT;
+  v_current_active INT;
+BEGIN
+  IF NEW.status != 'cancelada' THEN
+    SELECT total_spots INTO v_total_spots FROM public.classes WHERE id = NEW.class_id;
+    IF v_total_spots IS NULL THEN
+      v_total_spots := 8;
+    END IF;
+
+    SELECT COUNT(*)::INT INTO v_current_active
+    FROM public.bookings
+    WHERE class_id = NEW.class_id
+      AND scheduled_date = NEW.scheduled_date
+      AND status != 'cancelada'
+      AND id != COALESCE(NEW.id, '00000000-0000-0000-0000-000000000000'::UUID);
+
+    IF v_current_active >= v_total_spots THEN
+      RAISE EXCEPTION 'Capacidad máxima alcanzada para esta clase (% cupos)', v_total_spots;
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_check_class_capacity ON public.bookings;
+CREATE TRIGGER trg_check_class_capacity
+  BEFORE INSERT OR UPDATE OF status, class_id, scheduled_date ON public.bookings
+  FOR EACH ROW EXECUTE FUNCTION public.fn_check_class_capacity();
+
+-- Procedimiento Atomico RPC: Reserva Segura con Bloqueo Transaccional
+CREATE OR REPLACE FUNCTION public.fn_reserve_class_spot(
+  p_class_id       TEXT,
+  p_scheduled_date DATE,
+  p_client_name    TEXT,
+  p_client_dni     TEXT,
+  p_client_email   TEXT,
+  p_client_phone   TEXT DEFAULT NULL,
+  p_bed_number     SMALLINT DEFAULT NULL,
+  p_medical_alert  TEXT DEFAULT NULL
+)
+RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER AS $$
+DECLARE
+  v_class           RECORD;
+  v_active_count    INT;
+  v_new_booking_id  UUID;
+  v_client_id       UUID;
+BEGIN
+  -- 1. Bloqueo transaccional de la clase para evitar condiciones de carrera
+  SELECT * INTO v_class
+  FROM public.classes
+  WHERE id = p_class_id AND is_active = TRUE
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Clase no encontrada o inactiva');
+  END IF;
+
+  -- 2. Conteo de ocupacion en fecha concreta
+  SELECT COUNT(*)::INT INTO v_active_count
+  FROM public.bookings
+  WHERE class_id = p_class_id
+    AND scheduled_date = p_scheduled_date
+    AND status != 'cancelada';
+
+  IF v_active_count >= v_class.total_spots THEN
+    RETURN jsonb_build_object('success', false, 'error', 'La clase no tiene cupos disponibles');
+  END IF;
+
+  -- 3. Verificacion de reserva duplicada
+  IF EXISTS (
+    SELECT 1 FROM public.bookings
+    WHERE class_id = p_class_id
+      AND scheduled_date = p_scheduled_date
+      AND client_dni = p_client_dni
+      AND status != 'cancelada'
+  ) THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Ya tienes una reserva activa para este turno');
+  END IF;
+
+  -- 4. Validacion de cama si se especifico
+  IF p_bed_number IS NOT NULL THEN
+    IF p_bed_number < 1 OR p_bed_number > 8 THEN
+      RETURN jsonb_build_object('success', false, 'error', 'El número de cama debe ser entre 1 y 8');
+    END IF;
+
+    IF EXISTS (
+      SELECT 1 FROM public.bookings
+      WHERE class_id = p_class_id
+        AND scheduled_date = p_scheduled_date
+        AND bed_number = p_bed_number
+        AND status != 'cancelada'
+    ) THEN
+      RETURN jsonb_build_object('success', false, 'error', format('La cama Reformer #%s ya está ocupada', p_bed_number));
+    END IF;
+  END IF;
+
+  -- 5. Vincular cliente existente si existe
+  SELECT id INTO v_client_id FROM public.clients WHERE dni = p_client_dni LIMIT 1;
+
+  -- 6. Insertar reserva de forma atomica
+  INSERT INTO public.bookings (
+    class_id, class_name, class_time, class_day, instructor_name,
+    scheduled_date, client_id, client_name, client_dni, client_email,
+    client_phone, bed_number, medical_alert, status
+  ) VALUES (
+    p_class_id, v_class.name, v_class.start_time::TEXT, v_class.day, v_class.instructor_name,
+    p_scheduled_date, v_client_id, p_client_name, p_client_dni, p_client_email,
+    p_client_phone, p_bed_number, p_medical_alert, 'confirmada'
+  ) RETURNING id INTO v_new_booking_id;
+
+  -- 7. Descontar credito del plan de la alumna si tiene plan tipo pack activo
+  IF v_client_id IS NOT NULL THEN
+    UPDATE public.client_plans
+    SET credits_left = GREATEST(credits_left - 1, 0)
+    WHERE id = (
+      SELECT id FROM public.client_plans
+      WHERE client_id = v_client_id
+        AND is_active = TRUE
+        AND plan_type = 'pack'
+        AND credits_left > 0
+      ORDER BY created_at ASC
+      LIMIT 1
+    );
+  END IF;
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'booking_id', v_new_booking_id,
+    'bed_number', p_bed_number,
+    'available_spots', v_class.total_spots - (v_active_count + 1)
+  );
+END;
+$$;
 
 -- ============================================================
 -- FUNCION + TRIGGER: Check-in automatico
@@ -498,6 +641,8 @@ CREATE INDEX idx_clients_name_trgm
 -- bookings
 CREATE INDEX idx_bookings_class_date
   ON public.bookings(class_id, scheduled_date);
+CREATE INDEX idx_bookings_active_class_date
+  ON public.bookings(class_id, scheduled_date) WHERE status != 'cancelada';
 CREATE INDEX idx_bookings_client_dni
   ON public.bookings(client_dni);
 CREATE INDEX idx_bookings_client_id
@@ -518,6 +663,8 @@ CREATE INDEX idx_tx_category
   ON public.cash_transactions(category);
 CREATE INDEX idx_tx_client
   ON public.cash_transactions(client_id) WHERE client_id IS NOT NULL;
+CREATE INDEX idx_tx_composite_report
+  ON public.cash_transactions(transacted_at DESC, type, category);
 
 -- leads
 CREATE INDEX idx_leads_status
@@ -736,35 +883,11 @@ ON CONFLICT DO NOTHING;
 INSERT INTO public.staff_profiles (id, name, email, role, role_title, phone, dni, is_active) VALUES
   ('staff-valentino',
    'Valentino',
-   'tinoykz@gmail.com',
+   'tino@firme.com',
    'owner_dev',
    'Owner / Lead Developer',
    '+51 981 223 330',
    '70112233',
-   TRUE),
-  ('staff-soni',
-   'Soni',
-   'soni@firmestudio.pe',
-   'admin',
-   'Administracion Sede SJL',
-   '+51 991 223 344',
-   '71223344',
-   TRUE),
-  ('staff-keyla',
-   'Keyla',
-   'keyla@firmestudio.pe',
-   'admin',
-   'Administracion y Operaciones',
-   '+51 982 334 455',
-   '72334455',
-   TRUE),
-  ('staff-recepcion',
-   'Camila',
-   'recepcion@firmestudio.pe',
-   'receptionist',
-   'Recepcion y Mostrador SJL',
-   '+51 984 123 456',
-   '73445566',
    TRUE)
 ON CONFLICT (email) DO UPDATE SET
   role       = EXCLUDED.role,

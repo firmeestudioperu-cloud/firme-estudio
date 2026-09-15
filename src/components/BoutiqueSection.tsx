@@ -216,6 +216,8 @@ export const BoutiqueSection: React.FC<BoutiqueSectionProps> = ({
                     <img
                       src={prod.image}
                       alt={prod.name}
+                      loading="lazy"
+                      decoding="async"
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out"
                     />
                     {prod.tag && (
@@ -301,6 +303,8 @@ export const BoutiqueSection: React.FC<BoutiqueSectionProps> = ({
                   <img
                     src={selectedProduct.image}
                     alt={selectedProduct.name}
+                    loading="lazy"
+                    decoding="async"
                     className="w-16 h-16 rounded-lg object-cover border border-[#E4DED4]"
                   />
                   <div className="flex-1 min-w-0">

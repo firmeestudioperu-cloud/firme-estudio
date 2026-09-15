@@ -13,7 +13,6 @@ export type MainTabType =
   | 'profesores'
   | 'metodo'
   | 'admin'
-  | 'registros-presencial'
   | 'staff-hub'
   | 'kiosco'
   | 'instructor'
@@ -32,7 +31,8 @@ export type AdminSubTab =
   | 'reportes'
   | 'backend'
   | 'banners'
-  | 'seguridad';
+  | 'seguridad'
+  | 'usuarios';
 
 export interface CarouselBanner {
   id: string;
@@ -59,6 +59,40 @@ export interface DayTab {
   dateLabel: string;
 }
 
+export interface StudioRoom {
+  id: string;
+  name: string;
+  shortName: string;
+  type: 'reformer' | 'mat' | 'suspension' | 'privada';
+  capacity: number;
+  description?: string;
+  color?: string;
+  kioskEnabled?: boolean;
+}
+
+export const DEFAULT_STUDIO_ROOMS: StudioRoom[] = [
+  {
+    id: 'sala-1',
+    name: 'Sala 1 - Reformer Allegro 2 (Principal)',
+    shortName: 'Sala 1 (Principal)',
+    type: 'reformer',
+    capacity: 8,
+    description: 'Equipada con 8 camas Reformer Allegro 2 Balanced Body',
+    color: '#B5654A',
+    kioskEnabled: true,
+  },
+  {
+    id: 'sala-2',
+    name: 'Sala 2 - Studio Torre & Suspensión',
+    shortName: 'Sala 2 (Torre)',
+    type: 'reformer',
+    capacity: 8,
+    description: 'Equipada con 8 puestos Reformer con Torre y muelles',
+    color: '#2E7D32',
+    kioskEnabled: true,
+  },
+];
+
 export interface BookingRecord {
   id: string;
   classId: string;
@@ -73,6 +107,8 @@ export interface BookingRecord {
   status: 'confirmada' | 'asistio' | 'cancelada';
   bookedAt: string;
   bedNumber?: number; // Cama Reformer 1-8
+  roomId?: string; // 'sala-1' | 'sala-2'
+  roomName?: string;
   isWaitlist?: boolean;
   medicalAlert?: string;
   checkInTime?: string;
@@ -215,6 +251,8 @@ export interface ClassSession {
   focus: string;
   description?: string;
   isLocked?: boolean;
+  roomId?: string; // 'sala-1' | 'sala-2'
+  roomName?: string;
 }
 
 export interface Instructor {
@@ -250,7 +288,61 @@ export interface BookingModalData {
   waitlistPosition?: number;
 }
 
-export type UserRole = 'owner_dev' | 'admin' | 'receptionist' | 'instructor' | 'client';
+export type BuiltInRole = 'owner_dev' | 'admin' | 'receptionist' | 'instructor' | 'client';
+export type UserRole = BuiltInRole | (string & {});
+
+export interface RoleConfig {
+  id: string;
+  title: string;
+  description: string;
+  badgeColor?: string; // 'emerald' | 'amber' | 'purple' | 'sky' | 'rose' | 'stone'
+  isSystem: boolean;
+  canAccessAdminPanel?: boolean;
+  createdAt?: string;
+}
+
+export const DEFAULT_ROLES_CONFIG: RoleConfig[] = [
+  {
+    id: 'owner_dev',
+    title: 'Owner & Lead Developer',
+    description: 'Control absoluto del sistema, infraestructura, base de datos, APIs y alternancia exclusiva entre perfiles.',
+    badgeColor: 'stone',
+    isSystem: true,
+    canAccessAdminPanel: true,
+  },
+  {
+    id: 'admin',
+    title: 'Administración de Sede',
+    description: 'Gestión operativa diaria: agenda de 8 camas reformer, caja diaria, WhatsApp, cobros y clientes.',
+    badgeColor: 'emerald',
+    isSystem: true,
+    canAccessAdminPanel: true,
+  },
+  {
+    id: 'receptionist',
+    title: 'Recepcionista de Mostrador',
+    description: 'Atención presencial en sede SJL: alta rápida de clientas, cobros (Yape/POS/Efectivo), check-in en vivo y caja rápida.',
+    badgeColor: 'amber',
+    isSystem: true,
+    canAccessAdminPanel: true,
+  },
+  {
+    id: 'instructor',
+    title: 'Instructora Reformer',
+    description: 'Control en sala de clases: visualización de alumnas por cama, notas médicas y asistencia.',
+    badgeColor: 'purple',
+    isSystem: true,
+    canAccessAdminPanel: false,
+  },
+  {
+    id: 'client',
+    title: 'Alumna / Estudiante',
+    description: 'Reserva de clases reformer, adquisición de planes/membresías, créditos disponibles y nivel.',
+    badgeColor: 'sky',
+    isSystem: true,
+    canAccessAdminPanel: false,
+  },
+];
 
 export interface RoleDefinition {
   id: UserRole;
@@ -266,7 +358,7 @@ export interface RoleDefinition {
   allowedViews: string[];
 }
 
-export const ROLE_DEFINITIONS: Record<UserRole, RoleDefinition> = {
+export const ROLE_DEFINITIONS: Record<BuiltInRole, RoleDefinition> = {
   owner_dev: {
     id: 'owner_dev',
     name: 'Owner & Lead Developer',
@@ -347,7 +439,8 @@ export function isReceptionist(role?: UserRole): boolean {
 }
 
 export function isStaffRole(role?: UserRole): boolean {
-  return role === 'owner_dev' || role === 'admin' || role === 'receptionist';
+  if (!role || role === 'client') return false;
+  return true;
 }
 
 export function isInstructor(role?: UserRole): boolean {
@@ -363,10 +456,37 @@ export function canSwitchAccount(role?: UserRole): boolean {
 }
 
 export function getRoleDefinition(role?: UserRole): RoleDefinition {
-  if (!role || !ROLE_DEFINITIONS[role]) {
-    return ROLE_DEFINITIONS.client;
+  if (!role) return ROLE_DEFINITIONS.client;
+  if (ROLE_DEFINITIONS[role as BuiltInRole]) {
+    return ROLE_DEFINITIONS[role as BuiltInRole];
   }
-  return ROLE_DEFINITIONS[role];
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      const saved = localStorage.getItem('firme_roles_config');
+      if (saved) {
+        const roles: RoleConfig[] = JSON.parse(saved);
+        const custom = roles.find((r) => r.id === role);
+        if (custom) {
+          return {
+            id: custom.id as any,
+            name: custom.title,
+            description: custom.description,
+            badgeLabel: custom.title.toUpperCase(),
+            canSwitchAccounts: false,
+            canAccessBackend: false,
+            canAccessAdminPanel: custom.canAccessAdminPanel ?? true,
+            canManageCashRegister: true,
+            canManageSchedule: true,
+            canCheckInClients: true,
+            allowedViews: [custom.id, 'client'],
+          };
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+  return ROLE_DEFINITIONS.client;
 }
 
 export interface StaffAccount {
@@ -387,51 +507,15 @@ export const PREDEFINED_STAFF: StaffAccount[] = [
   {
     id: 'staff-valentino',
     name: 'Valentino',
-    email: 'tinoykz@gmail.com',
-    secondaryEmail: 'valentino@firmestudio.pe',
+    email: 'tino@firme.com',
+    secondaryEmail: 'tinoykz@gmail.com',
     role: 'owner_dev',
     roleTitle: 'Owner / Lead Developer',
     avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80',
     phone: '+51 981 223 330',
     dni: '70112233',
     description: 'Acceso Total: Infraestructura, APIs, Supabase y Back-Office',
-    defaultPassword: 'firme2026',
-  },
-  {
-    id: 'staff-soni',
-    name: 'Soni',
-    email: 'soni@firmestudio.pe',
-    role: 'admin',
-    roleTitle: 'Administración Sede SJL',
-    avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=120&auto=format&fit=crop&q=80',
-    phone: '+51 991 223 344',
-    dni: '71223344',
-    description: 'Gestión Operativa: Clientes, Agenda, 8 Camas, Caja y WhatsApp',
-    defaultPassword: 'firme2026',
-  },
-  {
-    id: 'staff-keyla',
-    name: 'Keyla',
-    email: 'keyla@firmestudio.pe',
-    role: 'admin',
-    roleTitle: 'Administración & Operaciones',
-    avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=120&auto=format&fit=crop&q=80',
-    phone: '+51 982 334 455',
-    dni: '72334455',
-    description: 'Gestión Operativa: Clientes, Agenda, 8 Camas, Caja y WhatsApp',
-    defaultPassword: 'firme2026',
-  },
-  {
-    id: 'staff-recepcion',
-    name: 'Camila',
-    email: 'recepcion@firmestudio.pe',
-    role: 'receptionist',
-    roleTitle: 'Recepción & Mostrador SJL',
-    avatar: 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=120&auto=format&fit=crop&q=80',
-    phone: '+51 984 123 456',
-    dni: '73445566',
-    description: 'Atención Presencial: Altas express, Cobros en Mostrador y Check-in',
-    defaultPassword: 'firme2026',
+    defaultPassword: '30092023',
   },
 ];
 
@@ -444,9 +528,10 @@ export function determineUserRole(
   const normEmail = (email || '').trim().toLowerCase();
   const normDni = (dni || '').trim();
 
-  // OWNER DEV: Valentino / Tino (incluye tinoykz@gmail.com, DNI 70112233)
+  // OWNER DEV: Valentino / Tino (tino@firme.com, DNI 70112233)
   if (
     normDni === '70112233' ||
+    normEmail === 'tino@firme.com' ||
     normName.includes('valentino') ||
     normEmail.includes('valentino') ||
     normName === 'tino' ||
@@ -456,37 +541,6 @@ export function determineUserRole(
     normEmail === 'tinoykz@gmail.com'
   ) {
     return { role: 'owner_dev', roleTitle: 'Owner / Lead Developer' };
-  }
-
-  // ADMIN: Soni (DNI 71223344)
-  if (
-    normDni === '71223344' ||
-    normName.includes('soni') ||
-    normEmail.includes('soni') ||
-    normEmail === 'soni@firmestudio.pe'
-  ) {
-    return { role: 'admin', roleTitle: 'Administración Sede SJL' };
-  }
-
-  // ADMIN: Keyla (DNI 72334455)
-  if (
-    normDni === '72334455' ||
-    normName.includes('keyla') ||
-    normEmail.includes('keyla') ||
-    normEmail === 'keyla@firmestudio.pe'
-  ) {
-    return { role: 'admin', roleTitle: 'Administración & Operaciones' };
-  }
-
-  // RECEPCIONISTA: Camila / Recepción (DNI 73445566)
-  if (
-    normDni === '73445566' ||
-    normName.includes('recepcion') ||
-    normEmail.includes('recepcion') ||
-    normName.includes('camila') ||
-    normEmail === 'recepcion@firmestudio.pe'
-  ) {
-    return { role: 'receptionist', roleTitle: 'Recepción & Mostrador SJL' };
   }
 
   // INSTRUCTOR: Instructora o Profesora
@@ -512,7 +566,8 @@ export function findStaffByCredential(identifier: string): StaffAccount | undefi
       (s.dni && s.dni.toLowerCase() === clean) ||
       s.name.toLowerCase() === clean ||
       (clean.includes('tinoykz') && s.role === 'owner_dev') ||
-      (clean === 'tino' && s.role === 'owner_dev')
+      (clean === 'tino' && s.role === 'owner_dev') ||
+      (clean === 'tino@firme.com' && s.role === 'owner_dev')
     );
   });
 }

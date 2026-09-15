@@ -4,6 +4,7 @@ import {
   CashRegisterState,
   ExpenseRecord,
   LeadRecord,
+  BookingRecord,
 } from '../types';
 
 export const INITIAL_CLIENTS: ClientProfile[] = [
@@ -381,3 +382,45 @@ export const MOCK_LEADS = INITIAL_LEADS;
 export const INITIAL_CASH_STATE = INITIAL_CASH_REGISTER;
 export const MOCK_CASH_STATE = INITIAL_CASH_REGISTER;
 export const MOCK_CASH_REGISTERS = INITIAL_CASH_REGISTER;
+
+export const INITIAL_BOOKINGS: BookingRecord[] = [
+  {
+    id: 'b-1',
+    classId: 'c2',
+    className: 'Reformer Core & Form',
+    classTime: '08:30',
+    classDay: 'lun',
+    instructor: 'Mateo Silva',
+    clientName: 'María Fernanda Ruiz',
+    clientEmail: 'maria.ruiz@gmail.com',
+    clientPhone: '+51 984 123 456',
+    status: 'confirmada',
+    bookedAt: '02/09/2026 08:30',
+  },
+  {
+    id: 'b-2',
+    classId: 'c1',
+    className: 'Reformer Foundations',
+    classTime: '07:00',
+    classDay: 'lun',
+    instructor: 'Camila Morales',
+    clientName: 'Rodrigo Salazar',
+    clientEmail: 'rodrigo.s@outlook.com',
+    clientPhone: '+51 992 456 789',
+    status: 'asistio',
+    bookedAt: '01/09/2026 19:30',
+  },
+  {
+    id: 'b-3',
+    classId: 'c3',
+    className: 'Mat Sculpt & Breath',
+    classTime: '10:00',
+    classDay: 'lun',
+    instructor: 'Valeria Castro',
+    clientName: 'Andrea Navarro',
+    clientEmail: 'andrea.navarro@gmail.com',
+    clientPhone: '+51 971 332 114',
+    status: 'confirmada',
+    bookedAt: '02/09/2026 09:15',
+  },
+];

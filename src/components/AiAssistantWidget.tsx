@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
+  Cat,
   Sparkles,
   MessageSquare,
   X,
@@ -35,7 +36,7 @@ const INITIAL_MESSAGES: ChatMessage[] = [
   {
     id: 'msg-welcome',
     sender: 'assistant',
-    text: '¡Hola! Soy el **Concierge Virtual de FIRME STUDIO** (Sede Jr. Akapana 1261, Lima - SJL). ¿En qué puedo guiarte hoy respecto a nuestras salas de Reformer Allegro 2, reservas o tu primera clase?',
+    text: '¡Hola! Soy **Grace IA**, tu asistente inteligente en **FIRME STUDIO** (Sede Jr. Akapana 1261, Lima - SJL). ¿En qué puedo guiarte hoy respecto a nuestras salas de Reformer Allegro 2, reservas o tu primera clase?',
     timestamp: 'Ahora',
   },
 ];
@@ -162,26 +163,31 @@ export const AiAssistantWidget: React.FC<AiAssistantWidgetProps> = ({
 
   return (
     <>
-      {/* Floating Trigger Pill Button (Ubicado encima del botón de WhatsApp para evitar superposición) */}
+      {/* Circular Floating Trigger Button (Grace IA - Solo Icono Gato con Animación de Flotación) */}
       {!isOpen && (
-        <button
-          type="button"
-          onClick={() => setIsOpen(true)}
-          className="fixed bottom-22 right-6 z-40 bg-[#1A1815] hover:bg-[#B5654A] text-[#FAF8F5] px-4 py-2.5 rounded-full shadow-2xl border border-[#B5654A]/40 hover:border-[#B5654A] flex items-center gap-2.5 transition-all duration-300 hover:scale-105 group cursor-pointer"
-          title="Abrir Asistente Virtual de FIRME STUDIO"
-        >
-          <div className="relative">
-            <Sparkles className="w-4 h-4 text-amber-300 group-hover:rotate-12 transition-transform" />
-            <span className="absolute -top-1 -right-1 w-2 h-2 bg-emerald-400 rounded-full animate-ping" />
-            <span className="absolute -top-1 -right-1 w-2 h-2 bg-emerald-400 rounded-full" />
-          </div>
-          <span className="font-fraunces text-xs font-semibold tracking-wide">
-            FIRME Concierge IA
-          </span>
-          <span className="hidden sm:inline-block text-[10px] bg-white/10 px-2 py-0.5 rounded-full text-white/80">
-            SJL
-          </span>
-        </button>
+        <div className="fixed bottom-6 right-6 z-40 animate-float-subtle select-none">
+          <button
+            type="button"
+            onClick={() => setIsOpen(true)}
+            className="group relative w-14 h-14 sm:w-15 sm:h-15 rounded-full bg-[#1A1815] hover:bg-[#B5654A] text-[#FAF8F5] shadow-[0_10px_30px_rgba(26,24,21,0.4)] hover:shadow-[0_12px_35px_rgba(181,101,74,0.5)] border-2 border-[#B5654A]/50 hover:border-[#FAF8F5]/80 flex items-center justify-center transition-all duration-300 hover:scale-110 active:scale-95 cursor-pointer"
+            title="Grace IA"
+            aria-label="Grace IA"
+          >
+            {/* Ícono de Gato */}
+            <div className="relative flex items-center justify-center">
+              <Cat className="w-7 h-7 sm:w-8 sm:h-8 text-[#FAF8F5] group-hover:scale-105 transition-transform" strokeWidth={1.8} />
+              
+              {/* Destello mágico */}
+              <Sparkles className="w-3.5 h-3.5 text-amber-300 absolute -top-1 -right-1 group-hover:rotate-12 transition-transform" />
+            </div>
+
+            {/* Punto de estado en línea con efecto ping */}
+            <span className="absolute top-0 right-0 flex h-3.5 w-3.5 -mt-0.5 -mr-0.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-emerald-500 border-2 border-[#1A1815]" />
+            </span>
+          </button>
+        </div>
       )}
 
       {/* Floating Chat Window */}
@@ -190,13 +196,13 @@ export const AiAssistantWidget: React.FC<AiAssistantWidgetProps> = ({
           {/* Header */}
           <div className="bg-[#1A1815] text-[#FAF8F5] p-4 flex items-center justify-between border-b border-white/10 shrink-0">
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-full bg-[#B5654A] flex items-center justify-center text-white font-serif font-bold text-sm shadow-xs">
-                F
+              <div className="w-9 h-9 rounded-full bg-[#B5654A] flex items-center justify-center text-white shadow-xs">
+                <Cat className="w-5 h-5 text-white" strokeWidth={2} />
               </div>
               <div>
                 <div className="flex items-center gap-1.5">
                   <h3 className="font-fraunces text-sm font-semibold tracking-wide">
-                    FIRME Concierge
+                    Grace IA
                   </h3>
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
                 </div>
@@ -224,8 +230,8 @@ export const AiAssistantWidget: React.FC<AiAssistantWidgetProps> = ({
                 className={`flex gap-2.5 ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
               >
                 {msg.sender === 'assistant' && (
-                  <div className="w-6 h-6 rounded-full bg-[#B5654A]/20 text-[#B5654A] flex items-center justify-center shrink-0 mt-0.5">
-                    <Sparkles className="w-3.5 h-3.5" />
+                  <div className="w-7 h-7 rounded-full bg-[#B5654A]/20 text-[#B5654A] flex items-center justify-center shrink-0 mt-0.5">
+                    <Cat className="w-4 h-4" strokeWidth={2} />
                   </div>
                 )}
 
@@ -299,7 +305,7 @@ export const AiAssistantWidget: React.FC<AiAssistantWidgetProps> = ({
                 <div className="w-6 h-6 rounded-full bg-[#B5654A]/10 text-[#B5654A] flex items-center justify-center shrink-0">
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
                 </div>
-                <span className="italic text-[11px]">Consultando a FIRME Concierge...</span>
+                <span className="italic text-[11px]">Consultando a Grace IA...</span>
               </div>
             )}
 

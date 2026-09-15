@@ -12,12 +12,31 @@ import {
 
 const API_BASE = '/api';
 
+export interface PaginationMeta {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
 export interface HealthResponse {
   status: string;
   timestamp: string;
   service: string;
   environment: string;
   version: string;
+  uptimeSeconds?: number;
+  system?: {
+    nodeVersion: string;
+    rssMemoryMb: number;
+    heapUsedMb: number;
+    heapTotalMb?: number;
+  };
+  persistence?: {
+    lastSavedAt: string | null;
+    isSaving: boolean;
+    hasPendingSave: boolean;
+  };
   metrics: {
     totalClients: number;
     activeClients: number;
@@ -70,7 +89,12 @@ export const studioApi = {
     }),
 
   // Bookings
-  getBookings: () => request<{ success: boolean; data: BookingRecord[] }>('/bookings'),
+  getBookings: (params?: { classId?: string; clientEmail?: string; status?: string; page?: number; limit?: number }) => {
+    const qs = params
+      ? '?' + new URLSearchParams(Object.entries(params).filter(([_, v]) => v !== undefined).map(([k, v]) => [k, String(v)])).toString()
+      : '';
+    return request<{ success: boolean; data: BookingRecord[]; count?: number; pagination?: PaginationMeta }>(`/bookings${qs}`);
+  },
   createBooking: (booking: Omit<BookingRecord, 'id' | 'bookedAt' | 'status'>) =>
     request<{ success: boolean; data: BookingRecord; message: string }>('/bookings', {
       method: 'POST',
@@ -102,8 +126,15 @@ export const studioApi = {
     }),
 
   // Clients
-  getClients: (search?: string) =>
-    request<{ success: boolean; data: ClientProfile[] }>(search ? `/clients?search=${encodeURIComponent(search)}` : '/clients'),
+  getClients: (searchOrParams?: string | { search?: string; status?: string; planType?: string; page?: number; limit?: number }) => {
+    let qs = '';
+    if (typeof searchOrParams === 'string') {
+      qs = searchOrParams ? `?search=${encodeURIComponent(searchOrParams)}` : '';
+    } else if (searchOrParams && typeof searchOrParams === 'object') {
+      qs = '?' + new URLSearchParams(Object.entries(searchOrParams).filter(([_, v]) => v !== undefined).map(([k, v]) => [k, String(v)])).toString();
+    }
+    return request<{ success: boolean; data: ClientProfile[]; count?: number; pagination?: PaginationMeta }>(`/clients${qs}`);
+  },
   createClient: (client: Omit<ClientProfile, 'id' | 'joinDate' | 'lastVisit' | 'totalAttended' | 'status'>) =>
     request<{ success: boolean; data: ClientProfile }>('/clients', {
       method: 'POST',
@@ -122,7 +153,12 @@ export const studioApi = {
   // Finance & Cash Register
   getCashRegister: () => request<{ success: boolean; data: CashRegisterState }>('/finance/register'),
   toggleCashRegister: () => request<{ success: boolean; data: CashRegisterState; message: string }>('/finance/register/toggle', { method: 'POST' }),
-  getTransactions: () => request<{ success: boolean; data: CashTransaction[]; totalAmount: number }>('/finance/transactions'),
+  getTransactions: (params?: { paymentMethod?: string; category?: string; date?: string; startDate?: string; endDate?: string; page?: number; limit?: number }) => {
+    const qs = params
+      ? '?' + new URLSearchParams(Object.entries(params).filter(([_, v]) => v !== undefined).map(([k, v]) => [k, String(v)])).toString()
+      : '';
+    return request<{ success: boolean; data: CashTransaction[]; totalAmount: number; count?: number; pagination?: PaginationMeta }>(`/finance/transactions${qs}`);
+  },
   createTransaction: (tx: Omit<CashTransaction, 'id'>) =>
     request<{ success: boolean; data: CashTransaction }>('/finance/transactions', {
       method: 'POST',
@@ -139,7 +175,12 @@ export const studioApi = {
     }),
 
   // Expenses
-  getExpenses: () => request<{ success: boolean; data: ExpenseRecord[]; totalAmount: number }>('/finance/expenses'),
+  getExpenses: (params?: { category?: string; status?: string; startDate?: string; endDate?: string; page?: number; limit?: number }) => {
+    const qs = params
+      ? '?' + new URLSearchParams(Object.entries(params).filter(([_, v]) => v !== undefined).map(([k, v]) => [k, String(v)])).toString()
+      : '';
+    return request<{ success: boolean; data: ExpenseRecord[]; totalAmount: number; count?: number; pagination?: PaginationMeta }>(`/finance/expenses${qs}`);
+  },
   createExpense: (exp: Omit<ExpenseRecord, 'id'>) =>
     request<{ success: boolean; data: ExpenseRecord }>('/finance/expenses', {
       method: 'POST',

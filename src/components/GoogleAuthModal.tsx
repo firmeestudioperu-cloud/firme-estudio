@@ -14,7 +14,7 @@ import {
   Key,
   QrCode,
 } from 'lucide-react';
-import { AuthUser, PREDEFINED_STAFF, findStaffByCredential, StaffAccount } from '../types';
+import { AuthUser, findStaffByCredential } from '../types';
 import { supabaseService } from '../services/supabaseService';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
@@ -370,7 +370,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
 
     // Buscar credenciales de Staff
     const staffMatch = findStaffByCredential(staffIdentifier.trim());
-    const storedMaster = localStorage.getItem('firme_admin_password') || 'firme2026';
+    const storedMaster = localStorage.getItem('firme_admin_password') || '30092023';
     const staffPass = staffMatch?.defaultPassword || storedMaster;
 
     if (staffMatch && (staffPassword.trim() === staffPass || staffPassword.trim() === storedMaster)) {
@@ -405,11 +405,6 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
 
     setErrorMsg('Credenciales de trabajador incorrectas. Acceso exclusivo para personal autorizado.');
     setLoadingAction(null);
-  };
-
-  const handleQuickSelectStaff = (staff: StaffAccount) => {
-    setStaffIdentifier(staff.email);
-    setStaffPassword(staff.defaultPassword || 'firme2026');
   };
 
   // --------------------------------------------------------------------------
@@ -480,7 +475,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
               ? 'Iniciar Sesión'
               : viewMode === 'forgot'
               ? 'Recuperar Contraseña'
-              : 'Acceso de Trabajadores'}
+              : 'Portal de Colaboradores'}
           </h2>
           <p className="text-xs text-[#6B655C] mt-1">
             {viewMode === 'register'
@@ -489,7 +484,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
               ? 'Accede para gestionar tus clases y reservas.'
               : viewMode === 'forgot'
               ? 'Te enviaremos un enlace seguro a tu correo para restablecer tu acceso.'
-              : 'Ingresa con tu cuenta Staff (Owner o Administración).'}
+              : 'Ingreso exclusivo para el equipo operativo, recepción y directivo.'}
           </p>
         </div>
 
@@ -801,63 +796,63 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
         )}
 
         {/* ===================================================================
-            4. INICIAR CON CUENTA DE TRABAJADOR (STAFF: OWNER / ADMIN)
+            4. INICIAR CON CUENTA DE TRABAJADOR (STAFF: OWNER / ADMIN / RECEPCIÓN)
             =================================================================== */}
         {viewMode === 'staff' && (
-          <form onSubmit={handleStaffLogin} className="space-y-3.5">
-            <div className="bg-[#FAF2E8] border border-[#B5654A]/30 p-3 rounded-2xl text-xs text-[#1A1815] space-y-2">
-              <div className="font-bold flex items-center gap-1.5 text-[#B5654A]">
-                <ShieldCheck className="w-4 h-4" />
-                <span>Cuentas de Personal Autorizadas:</span>
+          <form onSubmit={handleStaffLogin} className="space-y-4">
+            <div className="bg-[#FAF7F2] border border-[#E4DED4] p-3.5 rounded-2xl flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-[#B5654A]/10 border border-[#B5654A]/20 flex items-center justify-center text-[#B5654A] shrink-0">
+                <ShieldCheck className="w-5 h-5" />
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-                {PREDEFINED_STAFF.map((staff) => (
-                  <button
-                    key={staff.id}
-                    type="button"
-                    onClick={() => handleQuickSelectStaff(staff)}
-                    className="p-1.5 bg-white rounded-xl border border-[#DDD5C9] hover:border-[#B5654A] text-left text-[11px] transition-colors cursor-pointer"
-                  >
-                    <div className="font-bold truncate">{staff.name}</div>
-                    <div className="text-[9px] text-[#B5654A] uppercase font-bold truncate">
-                      {staff.role === 'owner_dev' ? 'Owner' : staff.role === 'admin' ? 'Admin' : 'Recepción'}
-                    </div>
-                  </button>
-                ))}
+              <div className="text-xs">
+                <div className="font-bold text-[#1A1815]">Área Exclusiva de Colaboradores</div>
+                <div className="text-[#6B655C] text-[11px]">Identifícate con tus credenciales corporativas autorizadas.</div>
               </div>
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-[#1A1815] mb-1">
-                Correo o Identificador de Trabajador <span className="text-rose-500">*</span>
+              <label className="block text-xs font-bold text-[#1A1815] mb-1.5">
+                Correo, Usuario o DNI de Personal <span className="text-rose-500">*</span>
               </label>
-              <input
-                type="text"
-                required
-                value={staffIdentifier}
-                onChange={(e) => setStaffIdentifier(e.target.value)}
-                placeholder="ej. tinoykz@gmail.com o soni@firmestudio.pe"
-                className="w-full bg-white border border-[#DDD5C9] rounded-xl px-3.5 py-2.5 text-xs text-[#1A1815] focus:outline-hidden focus:border-[#B5654A]"
-              />
+              <div className="relative">
+                <User className="w-4 h-4 text-[#AFA79C] absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  required
+                  value={staffIdentifier}
+                  onChange={(e) => {
+                    setStaffIdentifier(e.target.value);
+                    setErrorMsg('');
+                  }}
+                  placeholder="ej. tino@firme.com"
+                  className="w-full bg-white border border-[#DDD5C9] rounded-xl pl-10 pr-3.5 py-2.5 text-xs text-[#1A1815] focus:outline-hidden focus:border-[#B5654A] focus:ring-1 focus:ring-[#B5654A] transition-all"
+                  autoFocus
+                />
+              </div>
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-[#1A1815] mb-1">
+              <label className="block text-xs font-bold text-[#1A1815] mb-1.5">
                 Contraseña de Personal <span className="text-rose-500">*</span>
               </label>
               <div className="relative">
+                <Lock className="w-4 h-4 text-[#AFA79C] absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
                   type={showStaffPassword ? 'text' : 'password'}
                   required
                   value={staffPassword}
-                  onChange={(e) => setStaffPassword(e.target.value)}
-                  placeholder="Contraseña staff"
-                  className="w-full bg-white border border-[#DDD5C9] rounded-xl px-3.5 pr-10 py-2.5 text-xs text-[#1A1815] focus:outline-hidden focus:border-[#B5654A]"
+                  onChange={(e) => {
+                    setStaffPassword(e.target.value);
+                    setErrorMsg('');
+                  }}
+                  placeholder="••••••••••••"
+                  className="w-full bg-white border border-[#DDD5C9] rounded-xl pl-10 pr-10 py-2.5 text-xs text-[#1A1815] focus:outline-hidden focus:border-[#B5654A] focus:ring-1 focus:ring-[#B5654A] transition-all"
                 />
                 <button
                   type="button"
                   onClick={() => setShowStaffPassword(!showStaffPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#AFA79C] hover:text-[#1A1815] cursor-pointer"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#AFA79C] hover:text-[#1A1815] p-1 cursor-pointer transition-colors"
+                  aria-label={showStaffPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
                 >
                   {showStaffPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -867,10 +862,14 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
             <button
               type="submit"
               disabled={loadingAction === 'staff'}
-              className="w-full mt-2 py-3 px-4 rounded-xl bg-[#B5654A] hover:bg-[#9A5340] text-white text-xs sm:text-sm font-bold shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full mt-2 py-3 px-4 rounded-xl bg-[#B5654A] hover:bg-[#9A5340] text-white text-xs sm:text-sm font-bold shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
             >
-              <span>Ingresar como Trabajador y Elegir Destino</span>
-              <ArrowRight className="w-4 h-4" />
+              {loadingAction === 'staff' ? (
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <ShieldCheck className="w-4 h-4" />
+              )}
+              <span>{loadingAction === 'staff' ? 'Verificando credenciales...' : 'Ingresar al Portal Staff'}</span>
             </button>
           </form>
         )}

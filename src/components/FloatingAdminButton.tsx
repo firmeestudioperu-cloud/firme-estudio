@@ -1,6 +1,6 @@
 import React from 'react';
 import { ShieldCheck, ArrowLeft } from 'lucide-react';
-import { AuthUser, MainTabType } from '../types';
+import { AuthUser, MainTabType, isStaffRole } from '../types';
 
 interface FloatingAdminButtonProps {
   currentUser: AuthUser | null;
@@ -9,7 +9,7 @@ interface FloatingAdminButtonProps {
 }
 
 /**
- * Boton flotante exclusivo para el equipo Staff (Owner / Dev y Administradoras).
+ * Boton flotante exclusivo para el equipo Staff (Owner / Dev, Administradoras y Roles Personalizados).
  * Completamente invisible para alumnas (rol 'client') o usuarios no autenticados.
  */
 export const FloatingAdminButton: React.FC<FloatingAdminButtonProps> = ({
@@ -17,32 +17,22 @@ export const FloatingAdminButton: React.FC<FloatingAdminButtonProps> = ({
   activeTab,
   onSelectTab,
 }) => {
-  // Verificación de rol Staff: 'owner_dev', 'admin' o 'receptionist'
-  const isStaff =
-    currentUser?.role === 'owner_dev' ||
-    currentUser?.role === 'admin' ||
-    currentUser?.role === 'receptionist';
+  // Verificación de rol Staff: 'owner_dev', 'admin', 'receptionist' o roles personalizados
+  const isStaff = isStaffRole(currentUser?.role) && currentUser?.role !== 'instructor';
   if (!isStaff) return null;
 
   const isOwnerDev = currentUser?.role === 'owner_dev';
   const isAdmin = currentUser?.role === 'admin';
-  const isReceptionist = currentUser?.role === 'receptionist';
   const isAdminActive = activeTab === 'admin';
-  const isDeskActive = activeTab === 'registros-presencial';
   const isHubActive = activeTab === 'staff-hub';
-  const isInStaffArea = isAdminActive || isDeskActive || isHubActive;
+  const isInStaffArea = isAdminActive || isHubActive;
 
   const handleClick = () => {
     if (isInStaffArea) {
       // Si ya está dentro de un espacio de staff, permite volver a la web pública
       onSelectTab('inicio');
     } else {
-      // Si es recepcionista va directo al panel de registros, sino al Hub
-      if (isReceptionist) {
-        onSelectTab('registros-presencial');
-      } else {
-        onSelectTab('staff-hub');
-      }
+      onSelectTab('admin');
     }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -91,13 +81,7 @@ export const FloatingAdminButton: React.FC<FloatingAdminButtonProps> = ({
         {/* Texto Principal */}
         <div className="flex flex-col items-start leading-none text-left">
           <span className="font-fraunces text-xs font-semibold tracking-wide flex items-center gap-1.5">
-            {isInStaffArea
-              ? 'Salir a la Web'
-              : isDeskActive
-              ? 'Mostrador'
-              : isAdminActive
-              ? 'Panel Admin'
-              : 'Portal Staff'}
+            {isInStaffArea ? 'Salir a la Web' : 'Panel Admin'}
           </span>
           <span className="text-[9px] text-[#AFA79C] group-hover:text-[#DDD5C9] transition-colors mt-0.5 font-medium">
             {isInStaffArea ? 'Ver modo alumna' : currentUser?.name?.split(' ')[0] || 'Staff'}

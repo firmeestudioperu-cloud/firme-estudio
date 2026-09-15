@@ -181,6 +181,8 @@ export const Hero: React.FC<HeroProps> = ({
                       <img
                         src={banner.url}
                         alt={banner.title}
+                        loading={index === 0 ? 'eager' : 'lazy'}
+                        decoding="async"
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-1000 ease-out"
                         onError={(e) => {
                           // Fallback to local image if external link fails

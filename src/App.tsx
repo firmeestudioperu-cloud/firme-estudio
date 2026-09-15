@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { Header } from './components/Header';
 import { Hero } from './components/Hero';
 import { MyClasses } from './components/MyClasses';
-import { NewHereSection } from './components/NewHereSection';
 import { ScheduleCalendar } from './components/ScheduleCalendar';
 import { PricingSection } from './components/PricingSection';
 import { InstructorGrid } from './components/InstructorGrid';
@@ -11,35 +10,17 @@ import { FinalCTA } from './components/FinalCTA';
 import { BoutiqueSection } from './components/BoutiqueSection';
 import { FaqSection } from './components/FaqSection';
 import { LocationSection } from './components/LocationSection';
-import { WhatsAppFloat } from './components/WhatsAppFloat';
 import { FloatingAdminButton } from './components/FloatingAdminButton';
 import { Footer } from './components/Footer';
-import { BookingModal } from './components/BookingModal';
-import { GoogleAuthModal } from './components/GoogleAuthModal';
-import { ClientCheckInModal } from './components/ClientCheckInModal';
-import { EditProfileModal } from './components/EditProfileModal';
-import { PlanCheckoutModal } from './components/PlanCheckoutModal';
-import { StudentLevelModal } from './components/StudentLevelModal';
-import { StudentProgressTab } from './components/StudentProgressTab';
-import { AdminPanel } from './components/AdminPanel';
-import { StaffDestinationHub } from './components/StaffDestinationHub';
-import { ReceptionDeskPanel } from './components/ReceptionDeskPanel';
-import { ReceptionKioskModal } from './components/ReceptionKioskModal';
-import { ReceptionQrModal } from './components/ReceptionQrModal';
-import { BiomechanicsQuizModal } from './components/BiomechanicsQuizModal';
-import { QuickRegistrationLanding } from './components/QuickRegistrationLanding';
-import { AiAssistantWidget } from './components/AiAssistantWidget';
-import { studioApi } from './services/api';
-import { supabaseService } from './services/supabaseService';
-import { isSupabaseConfigured } from './lib/supabase';
-import { MOCK_CLASSES } from './data/mockData';
-import {
-  INITIAL_CLIENTS,
-  INITIAL_TRANSACTIONS,
-  INITIAL_EXPENSES,
-  INITIAL_LEADS,
-  INITIAL_CASH_STATE,
-} from './data/adminMockData';
+import { StudioToast } from './components/StudioToast';
+import { StudioErrorBoundary } from './components/StudioErrorBoundary';
+
+// Hooks
+import { useToast } from './hooks/useToast';
+import { useStudioData } from './hooks/useStudioData';
+import { useStudioAuth } from './hooks/useStudioAuth';
+
+// Types
 import {
   ClassSession,
   BookingModalData,
@@ -47,278 +28,178 @@ import {
   MainTabType,
   BookingRecord,
   ClientProfile,
-  CashTransaction,
-  ExpenseRecord,
-  LeadRecord,
-  CashRegisterState,
   AuthUser,
   determineUserRole,
   ClientBookingFormData,
   PaymentMethod,
 } from './types';
-import {
-  CheckCircle2,
-  Sparkles,
-  X,
-  BellRing,
-  Calendar,
-  UserCheck,
-  CreditCard,
-  Users,
-  ArrowRight,
-  ShieldCheck,
-} from 'lucide-react';
 
-const INITIAL_BOOKINGS: BookingRecord[] = [
-  {
-    id: 'b-1',
-    classId: 'c2',
-    className: 'Reformer Core & Form',
-    classTime: '08:30',
-    classDay: 'lun',
-    instructor: 'Mateo Silva',
-    clientName: 'María Fernanda Ruiz',
-    clientEmail: 'maria.ruiz@gmail.com',
-    clientPhone: '+51 984 123 456',
-    status: 'confirmada',
-    bookedAt: '02/09/2026 08:30',
-  },
-  {
-    id: 'b-2',
-    classId: 'c1',
-    className: 'Reformer Foundations',
-    classTime: '07:00',
-    classDay: 'lun',
-    instructor: 'Camila Morales',
-    clientName: 'Rodrigo Salazar',
-    clientEmail: 'rodrigo.s@outlook.com',
-    clientPhone: '+51 992 456 789',
-    status: 'asistio',
-    bookedAt: '01/09/2026 19:30',
-  },
-  {
-    id: 'b-3',
-    classId: 'c3',
-    className: 'Mat Sculpt & Breath',
-    classTime: '10:00',
-    classDay: 'lun',
-    instructor: 'Valeria Castro',
-    clientName: 'Andrea Navarro',
-    clientEmail: 'andrea.navarro@gmail.com',
-    clientPhone: '+51 971 332 114',
-    status: 'confirmada',
-    bookedAt: '02/09/2026 09:15',
-  },
-];
+// Helper robusto para importación dinámica de componentes con recuperación ante cortes de red o reinicios de Vite
+const robustLazy = <T extends React.ComponentType<any>>(
+  factory: () => Promise<{ default: T } | { [key: string]: T }>,
+  key: string = 'default'
+) =>
+  lazy(async () => {
+    try {
+      const module = await factory();
+      return { default: (module as any)[key] || (module as any).default };
+    } catch (err: any) {
+      console.warn('Fallo transitorio en importación dinámica, reintentando carga...', err);
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      const moduleRetry = await factory();
+      return { default: (moduleRetry as any)[key] || (moduleRetry as any).default };
+    }
+  });
+
+// Lazy-loaded heavy components (Modals & Secondary Views)
+const AdminPanel = robustLazy(
+  () => import('./components/AdminPanel'),
+  'AdminPanel'
+);
+const StaffDestinationHub = robustLazy(
+  () => import('./components/StaffDestinationHub'),
+  'StaffDestinationHub'
+);
+const StudentRoomPanel = robustLazy(
+  () => import('./components/StudentRoomPanel'),
+  'StudentRoomPanel'
+);
+const QuickRegistrationLanding = lazy(() =>
+  import('./components/QuickRegistrationLanding').then((m) => ({ default: m.QuickRegistrationLanding }))
+);
+const StudentProgressTab = lazy(() =>
+  import('./components/StudentProgressTab').then((m) => ({ default: m.StudentProgressTab }))
+);
+const AiAssistantWidget = lazy(() =>
+  import('./components/AiAssistantWidget').then((m) => ({ default: m.AiAssistantWidget }))
+);
+const BookingModal = lazy(() =>
+  import('./components/BookingModal').then((m) => ({ default: m.BookingModal }))
+);
+const GoogleAuthModal = lazy(() =>
+  import('./components/GoogleAuthModal').then((m) => ({ default: m.GoogleAuthModal }))
+);
+const ClientCheckInModal = lazy(() =>
+  import('./components/ClientCheckInModal').then((m) => ({ default: m.ClientCheckInModal }))
+);
+const EditProfileModal = lazy(() =>
+  import('./components/EditProfileModal').then((m) => ({ default: m.EditProfileModal }))
+);
+const PlanCheckoutModal = lazy(() =>
+  import('./components/PlanCheckoutModal').then((m) => ({ default: m.PlanCheckoutModal }))
+);
+const StudentLevelModal = lazy(() =>
+  import('./components/StudentLevelModal').then((m) => ({ default: m.StudentLevelModal }))
+);
+const ReceptionKioskModal = lazy(() =>
+  import('./components/ReceptionKioskModal').then((m) => ({ default: m.ReceptionKioskModal }))
+);
+const ReceptionQrModal = lazy(() =>
+  import('./components/ReceptionQrModal').then((m) => ({ default: m.ReceptionQrModal }))
+);
+const BiomechanicsQuizModal = lazy(() =>
+  import('./components/BiomechanicsQuizModal').then((m) => ({ default: m.BiomechanicsQuizModal }))
+);
+
+const FallbackLoader = () => (
+  <div className="min-h-[300px] flex items-center justify-center">
+    <div className="w-8 h-8 border-2 border-[#B5654A] border-t-transparent rounded-full animate-spin" />
+  </div>
+);
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<MainTabType>('inicio');
-  const [classesList, setClassesList] = useState<ClassSession[]>(() => {
-    const saved = localStorage.getItem('firme_classes_data');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        return MOCK_CLASSES;
-      }
-    }
-    return MOCK_CLASSES;
-  });
-  const [bookingsList, setBookingsList] = useState<BookingRecord[]>(() => {
-    const saved = localStorage.getItem('firme_bookings_data');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        return INITIAL_BOOKINGS;
-      }
-    }
-    return INITIAL_BOOKINGS;
-  });
+  const { toast, showToast, closeToast } = useToast();
 
-  // Admin modules persistent state
-  const [clientsList, setClientsList] = useState<ClientProfile[]>(() => {
-    const saved = localStorage.getItem('firme_clients_data');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        return INITIAL_CLIENTS;
-      }
-    }
-    return INITIAL_CLIENTS;
-  });
+  // Encapsulated data collections and persistence
+  const {
+    classesList,
+    setClassesList,
+    bookingsList,
+    setBookingsList,
+    clientsList,
+    setClientsList,
+    transactionsList,
+    expensesList,
+    leadsList,
+    cashRegister,
+    handleAddClass,
+    handleUpdateClass,
+    handleDeleteClass,
+    handleUpdateSpots,
+    handleAddManualBooking,
+    handleUpdateBookingStatus,
+    handleCheckInBooking,
+    handleAssignBed,
+    handleAddClient,
+    handleUpdateClient,
+    handleDeleteClient,
+    handleUpdateClientCredits,
+    handleAddTransaction,
+    handleUpdateTransaction,
+    handleDeleteTransaction,
+    handleToggleCashRegister,
+    handleAddExpense,
+    handleUpdateExpense,
+    handleDeleteExpense,
+    handleUpdateExpenseStatus,
+    handleAddLead,
+    handleUpdateLead,
+    handleDeleteLead,
+    handleUpdateLeadStatus,
+    handleConvertLeadToClient,
+    handleResetData,
+    handleClearDemoData,
+  } = useStudioData({ showToast });
 
-  const [transactionsList, setTransactionsList] = useState<CashTransaction[]>(() => {
-    const saved = localStorage.getItem('firme_transactions_data');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        return INITIAL_TRANSACTIONS;
-      }
-    }
-    return INITIAL_TRANSACTIONS;
-  });
-
-  const [expensesList, setExpensesList] = useState<ExpenseRecord[]>(() => {
-    const saved = localStorage.getItem('firme_expenses_data');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        return INITIAL_EXPENSES;
-      }
-    }
-    return INITIAL_EXPENSES;
-  });
-
-  const [leadsList, setLeadsList] = useState<LeadRecord[]>(() => {
-    const saved = localStorage.getItem('firme_leads_data');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        return INITIAL_LEADS;
-      }
-    }
-    return INITIAL_LEADS;
-  });
-
-  const [cashRegister, setCashRegister] = useState<CashRegisterState>(() => {
-    const saved = localStorage.getItem('firme_cash_register_data');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        return INITIAL_CASH_STATE;
-      }
-    }
-    return INITIAL_CASH_STATE;
-  });
-
-  // Keep localStorage in sync
-  useEffect(() => {
-    localStorage.setItem('firme_classes_data', JSON.stringify(classesList));
-  }, [classesList]);
-
-  useEffect(() => {
-    localStorage.setItem('firme_bookings_data', JSON.stringify(bookingsList));
-  }, [bookingsList]);
-
-  useEffect(() => {
-    localStorage.setItem('firme_clients_data', JSON.stringify(clientsList));
-  }, [clientsList]);
-
-  useEffect(() => {
-    localStorage.setItem('firme_transactions_data', JSON.stringify(transactionsList));
-  }, [transactionsList]);
-
-  useEffect(() => {
-    localStorage.setItem('firme_expenses_data', JSON.stringify(expensesList));
-  }, [expensesList]);
-
-  useEffect(() => {
-    localStorage.setItem('firme_leads_data', JSON.stringify(leadsList));
-  }, [leadsList]);
-
-  useEffect(() => {
-    localStorage.setItem('firme_cash_register_data', JSON.stringify(cashRegister));
-  }, [cashRegister]);
-
-  // Sync with Backend API on load
-  useEffect(() => {
-    let isMounted = true;
-    studioApi
-      .getHealth()
-      .then((health) => {
-        if (!isMounted) return;
-        console.log('✨ FIRME STUDIO Backend API conectado:', health.service, health.version);
-      })
-      .catch((err) => {
-        console.log('Backend API en modo local/fallback:', err.message);
-      });
-
-    // Cargar datos desde Supabase Cloud si está configurado
-    if (isSupabaseConfigured()) {
-      supabaseService.getClasses().then((cls) => {
-        if (isMounted && cls && cls.length > 0) {
-          setClassesList(cls);
+  // Encapsulated user authentication & gamification
+  const {
+    currentUser,
+    setCurrentUser,
+    handleGainExp,
+    handleSpendExp,
+    handleSaveProfile,
+    handleGoogleAuthSuccess,
+    handleLogout,
+  } = useStudioAuth({
+    showToast,
+    onRegisterClientProfile: (user) => {
+      if (!user.email) return;
+      setClientsList((prev) => {
+        const exists = prev.some((c) => c.email && c.email.toLowerCase() === user.email.toLowerCase());
+        if (!exists) {
+          const newClient: ClientProfile = {
+            id: `cli-${Date.now()}`,
+            name: user.name,
+            dni: user.dni || 'No registrado',
+            phone: user.phone || '+51 900 000 000',
+            email: user.email,
+            currentPlan: user.planName || 'Nuevo Alumno',
+            planType: user.planName?.toLowerCase().includes('ilimitada') ? 'ilimitado' : 'pack',
+            creditsLeft: user.creditsLeft ?? 0,
+            totalAttended: 0,
+            status: 'activo',
+            joinDate: new Date().toLocaleDateString('es-PE'),
+            lastVisit: 'Recién registrado',
+            emergencyContact: user.emergencyContact || '',
+            emergencyPhone: user.emergencyPhone || '',
+            medicalNotes: user.healthConditions?.join(', ') || user.medicalNotes || '',
+            documentType: user.documentType || 'dni',
+            birthDate: user.birthDate,
+            gender: user.gender,
+            registrationMethod: user.registrationMethod || 'manual_smartfit',
+          };
+          return [newClient, ...prev];
         }
+        return prev;
       });
-      supabaseService.getBookings().then((bks) => {
-        if (isMounted && bks && bks.length > 0) {
-          setBookingsList(bks);
-        }
-      });
-
-      // Sincronizar sesión activa de Supabase (retorno de Google OAuth o sesión persistida)
-      supabaseService.getCurrentSessionUser().then((user) => {
-        if (!isMounted || !user) return;
-        setCurrentUser((prev) => {
-          if (!prev || prev.id !== user.id) {
-            localStorage.setItem('firme_auth_user', JSON.stringify(user));
-            return user;
-          }
-          return prev;
-        });
-      });
-    }
-
-    // Listener reactivo a cambios de sesión Supabase (Google OAuth o email)
-    const authUnsubscribe = supabaseService.onAuthStateChange((user) => {
-      if (!isMounted) return;
-      if (user) {
-        setCurrentUser(user);
-        localStorage.setItem('firme_auth_user', JSON.stringify(user));
-        if (user.role === 'owner_dev' || user.role === 'admin') {
-          sessionStorage.setItem('firme_admin_logged', 'true');
-        } else {
-          sessionStorage.removeItem('firme_admin_logged');
-        }
-      }
-    });
-
-    // Suscripción Realtime a reservas (Tótem SJL y nuevas reservas)
-    const unsubscribe = supabaseService.subscribeToBookings(({ newRecord }) => {
-      if (!isMounted || !newRecord) return;
-      setBookingsList((prev) => {
-        const idx = prev.findIndex((b) => b.id === newRecord.id);
-        if (idx >= 0) {
-          const updated = [...prev];
-          updated[idx] = newRecord;
-          return updated;
-        }
-        return [newRecord, ...prev];
-      });
-    });
-
-    return () => {
-      isMounted = false;
-      unsubscribe();
-      authUnsubscribe();
-    };
-  }, []);
-
-  // Authenticated user state (simulated Google or email session)
-  const [currentUser, setCurrentUser] = useState<AuthUser | null>(() => {
-    const saved = localStorage.getItem('firme_auth_user');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (!parsed.role) {
-          const { role, roleTitle } = determineUserRole(parsed.name, parsed.email, parsed.dni);
-          parsed.role = role;
-          parsed.roleTitle = roleTitle;
-        }
-        return parsed;
-      } catch (e) {
-        return null;
-      }
-    }
-    return null;
+    },
   });
+
+  // Modals & transient interaction state
   const [isCheckInModalOpen, setIsCheckInModalOpen] = useState(false);
+  const [scannedDniParam, setScannedDniParam] = useState<string | null>(null);
+  const [scannedNameParam, setScannedNameParam] = useState<string | null>(null);
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
   const [isGoogleAuthOpen, setIsGoogleAuthOpen] = useState(false);
   const [authInitialModality, setAuthInitialModality] = useState<'qr' | 'manual' | 'whatsapp' | 'receptionist' | 'register' | 'login'>('manual');
@@ -340,9 +221,8 @@ export default function App() {
   const [waitlistClassIds, setWaitlistClassIds] = useState<Set<string>>(new Set());
   const [alertClassIds, setAlertClassIds] = useState<Set<string>>(new Set(['c4']));
   const [bookingModalData, setBookingModalData] = useState<BookingModalData | null>(null);
-  const [toast, setToast] = useState<{ title: string; message: string; isAlert?: boolean } | null>(null);
 
-  // Auto-apertura del modal de registro rápido en la web pública para visitas no autenticadas ("Aparece solo")
+  // Auto-opening quick auth modal for new visitors
   useEffect(() => {
     if (!currentUser && !sessionStorage.getItem('firme_quick_auth_dismissed')) {
       const timer = setTimeout(() => {
@@ -353,333 +233,59 @@ export default function App() {
     }
   }, [currentUser]);
 
-  const handleGainExp = (amount: number, reason: string) => {
-    const prevExp = currentUser?.exp ?? 1350;
-    const prevLevel = currentUser?.level ?? 2;
-    const newExp = prevExp + amount;
-
-    let newLevel = 1;
-    let levelTitle = 'Nivel I: Fundamentos & Alineación';
-    if (newExp >= 5000) {
-      newLevel = 5;
-      levelTitle = 'Nivel V: Leyenda FIRME';
-    } else if (newExp >= 3000) {
-      newLevel = 4;
-      levelTitle = 'Nivel IV: Élite Contrology';
-    } else if (newExp >= 1500) {
-      newLevel = 3;
-      levelTitle = 'Nivel III: Maestría Reformer';
-    } else if (newExp >= 500) {
-      newLevel = 2;
-      levelTitle = 'Nivel II: Enfoque & Constancia';
-    }
-
-    const updatedUser: AuthUser = {
-      ...(currentUser || {
-        id: 'usr-default',
-        name: 'Sofía Montaner',
-        email: 'sofia.montaner@gmail.com',
-        provider: 'google',
-        dni: '72418902',
-        creditsLeft: 8,
-        totalAttended: 14,
-      }),
-      exp: newExp,
-      level: newLevel,
-      levelTitle: levelTitle,
-    };
-
-    setCurrentUser(updatedUser);
-    localStorage.setItem('firme_auth_user', JSON.stringify(updatedUser));
-
-    if (newLevel > prevLevel) {
-      setToast({
-        title: 'Evolución de Categoría Alcanzada',
-        message: `Has alcanzado la Categoría ${newLevel} (${levelTitle}). Consulta tus nuevos beneficios de membresía en tu panel de evolución.`,
-        isAlert: true,
-      });
-    } else {
-      setToast({
-        title: `+${amount} Puntos de Práctica Acreditados`,
-        message: `${reason}. Total acumulado: ${newExp.toLocaleString()} pts.`,
-      });
-    }
-    setTimeout(() => setToast(null), 4500);
-  };
-
-  const handleSpendExp = (amount: number, reason: string): boolean => {
-    const currentExp = currentUser?.exp ?? 1350;
-    if (currentExp < amount) {
-      setToast({
-        title: 'Puntos Insuficientes',
-        message: `Se requieren ${amount} pts para este canje y dispones de ${currentExp} pts. Asiste a tus próximas sesiones para continuar acumulando.`,
-        isAlert: true,
-      });
-      setTimeout(() => setToast(null), 4000);
-      return false;
-    }
-
-    const newExp = currentExp - amount;
-    let newLevel = 1;
-    let levelTitle = 'Nivel I: Fundamentos & Alineación';
-    if (newExp >= 5000) {
-      newLevel = 5;
-      levelTitle = 'Nivel V: Leyenda FIRME';
-    } else if (newExp >= 3000) {
-      newLevel = 4;
-      levelTitle = 'Nivel IV: Élite Contrology';
-    } else if (newExp >= 1500) {
-      newLevel = 3;
-      levelTitle = 'Nivel III: Maestría Reformer';
-    } else if (newExp >= 500) {
-      newLevel = 2;
-      levelTitle = 'Nivel II: Enfoque & Constancia';
-    }
-
-    const updatedUser: AuthUser = {
-      ...(currentUser || {
-        id: 'usr-default',
-        name: 'Sofía Montaner',
-        email: 'sofia.montaner@gmail.com',
-        provider: 'google',
-        dni: '72418902',
-        creditsLeft: 8,
-        totalAttended: 14,
-      }),
-      exp: newExp,
-      level: newLevel,
-      levelTitle: levelTitle,
-    };
-
-    setCurrentUser(updatedUser);
-    localStorage.setItem('firme_auth_user', JSON.stringify(updatedUser));
-
-    setToast({
-      title: 'Beneficio Canjeado Exitosamente',
-      message: `Has canjeado ${amount} pts por ${reason}. Saldo actual: ${newExp.toLocaleString()} pts.`,
-    });
-    setTimeout(() => setToast(null), 4500);
-    return true;
-  };
-
-  const handleSaveProfile = (updatedUser: AuthUser) => {
-    setCurrentUser(updatedUser);
-    localStorage.setItem('firme_auth_user', JSON.stringify(updatedUser));
-    setToast({
-      title: 'Perfil Actualizado',
-      message: 'Tus datos personales y ficha de salud se guardaron exitosamente.',
-    });
-    setTimeout(() => setToast(null), 3500);
-
-    // Sincronización en Supabase si está disponible
-    if (isSupabaseConfigured() && updatedUser.role === 'client') {
-      supabaseService.saveClientProfile({
-        name: updatedUser.name,
-        email: updatedUser.email,
-        phone: updatedUser.phone || '',
-        dni: updatedUser.dni || '',
-        planName: updatedUser.planName || 'Pase Regular',
-        creditsLeft: updatedUser.creditsLeft ?? 0,
-        experienceLevel: updatedUser.experienceLevel || 'Principiante',
-        healthConditions: updatedUser.healthConditions || ['Ninguna'],
-        medicalNotes: updatedUser.medicalNotes || '',
-        emergencyContact: updatedUser.emergencyContact || '',
-        emergencyPhone: updatedUser.emergencyPhone || '',
-      }).catch((err) => console.warn('Supabase profile sync warning:', err));
-    }
-  };
-
-  const handleGoogleAuthSuccess = (user: AuthUser) => {
-    const userWithExp: AuthUser = {
-      ...user,
-      exp: user.exp ?? 1350,
-      level: user.level ?? 2,
-      levelTitle: user.levelTitle ?? 'Nivel II: Enfoque & Constancia',
-    };
-    setCurrentUser(userWithExp);
-    localStorage.setItem('firme_auth_user', JSON.stringify(userWithExp));
-    if (userWithExp.role === 'client') {
-      sessionStorage.removeItem('firme_admin_logged');
-      // Ensure client is in the studio clients directory
-      if (userWithExp.email) {
-        setClientsList((prev) => {
-          const exists = prev.some((c) => c.email && c.email.toLowerCase() === userWithExp.email.toLowerCase());
-          if (!exists) {
-            const newClient: ClientProfile = {
-              id: `cli-${Date.now()}`,
-              name: userWithExp.name,
-              dni: userWithExp.dni || 'No registrado',
-              phone: userWithExp.phone || '+51 900 000 000',
-              email: userWithExp.email,
-              currentPlan: userWithExp.planName || 'Nuevo Alumno',
-              planType: userWithExp.planName?.toLowerCase().includes('ilimitada') ? 'ilimitado' : 'pack',
-              creditsLeft: userWithExp.creditsLeft ?? 0,
-              totalAttended: 0,
-              status: 'activo',
-              joinDate: new Date().toLocaleDateString('es-PE'),
-              lastVisit: 'Recién registrado',
-              emergencyContact: userWithExp.emergencyContact || '',
-              emergencyPhone: userWithExp.emergencyPhone || '',
-              medicalNotes: userWithExp.healthConditions?.join(', ') || userWithExp.medicalNotes || '',
-              documentType: userWithExp.documentType || 'dni',
-              birthDate: userWithExp.birthDate,
-              gender: userWithExp.gender,
-              registrationMethod: userWithExp.registrationMethod || 'manual_smartfit',
-            };
-            return [newClient, ...prev];
-          }
-          return prev;
-        });
-      }
-    } else {
-      if (userWithExp.role === 'receptionist') {
-        sessionStorage.removeItem('firme_admin_logged');
-        sessionStorage.setItem('firme_staff_logged', 'true');
-        setActiveTab('registros-presencial');
-      } else {
-        sessionStorage.setItem('firme_admin_logged', 'true');
-        setActiveTab('staff-hub');
-      }
-    }
-    setToast({
-      title: 'Sesión Iniciada Exitosamente',
-      message: `Bienvenido/a, ${user.name}. Continuando con tu gestión...`,
-    });
-    setTimeout(() => setToast(null), 3500);
-
-    // Reanudar automáticamente la reserva o compra pendiente si el usuario no estaba autenticado
-    if (pendingBookingAction) {
-      if (pendingBookingAction.type === 'class') {
-        const targetClass = pendingBookingAction.classSession || classesList[0];
-        if (targetClass) {
-          setBookingModalData({
-            classSession: targetClass,
-            type: pendingBookingAction.bookingType || 'reserve',
-          });
-        }
-      } else if (pendingBookingAction.type === 'plan' && pendingBookingAction.plan) {
-        setSelectedPlanForCheckout(pendingBookingAction.plan);
-      }
-      setPendingBookingAction(null);
-      setAuthPurpose('');
-    }
-  };
-
-  const handleLogout = async () => {
-    try {
-      await supabaseService.signOut();
-    } catch {
-      // ignore
-    }
-    setCurrentUser(null);
-    localStorage.removeItem('firme_auth_user');
-    sessionStorage.removeItem('firme_admin_logged');
-    if (activeTab === 'admin') {
-      setActiveTab('inicio');
-      history.replaceState(null, '', window.location.pathname);
-    }
-    setToast({
-      title: 'Sesión cerrada',
-      message: 'Has cerrado tu cuenta correctamente.',
-    });
-    setTimeout(() => setToast(null), 3000);
-  };
-
-  const handlePerformCheckIn = (bookingId: string) => {
-    const assignedBed = Math.floor(Math.random() * 8) + 1;
-    const nowTime = new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' });
-
-    setBookingsList((prev) =>
-      prev.map((b) =>
-        b.id === bookingId
-          ? {
-              ...b,
-              status: 'asistio',
-              bedNumber: assignedBed,
-              checkInTime: nowTime,
-            }
-          : b
-      )
-    );
-
-    // Reward with +150 EXP for checking in at the studio kiosk
-    handleGainExp(150, `Check-in en Sala Realizado (Cama #${assignedBed})`);
-  };
-
-  // Sync state with URL hash (#acceso-staff, #admin or public tabs) or path (/admin, /acceso-staff)
+  // Routing synchronization with URL hash/path
   useEffect(() => {
     const handleRouteCheck = () => {
-      const hash = window.location.hash.replace('#', '').toLowerCase();
-      const pathname = window.location.pathname.toLowerCase();
+      // Check for QR Pass scan action: /?action=checkin&dni=...
+      const searchParams = new URLSearchParams(window.location.search);
+      const actionParam = searchParams.get('action');
+      const dniParam = searchParams.get('dni');
+      const nameParam = searchParams.get('name');
 
-      // Rutas exclusivas para el panel presencial de mostrador
-      const isDeskRoute =
-        hash === 'mostrador' ||
-        hash === 'registros-presencial' ||
-        hash === 'recepcion' ||
-        hash === 'desk' ||
-        pathname === '/mostrador' ||
-        pathname === '/registros-presencial';
-
-      if (isDeskRoute) {
-        const savedUserStr = localStorage.getItem('firme_auth_user');
-        if (savedUserStr) {
-          try {
-            const parsed = JSON.parse(savedUserStr);
-            if (parsed.role === 'client') {
-              setActiveTab('inicio');
-              history.replaceState(null, '', window.location.pathname);
-              setToast({
-                title: 'Acceso Denegado',
-                message: 'El mostrador presencial es de uso exclusivo para el personal autorizado de FIRME STUDIO.',
-                isAlert: true,
-              });
-              return;
-            }
-          } catch (e) {
-            // ignore
-          }
-        }
-        setActiveTab('registros-presencial');
+      if (actionParam === 'checkin') {
+        if (dniParam) setScannedDniParam(dniParam);
+        if (nameParam) setScannedNameParam(nameParam);
+        setIsCheckInModalOpen(true);
+        showToast(
+          '📱 FIRME PASS Escaneado',
+          dniParam
+            ? `Identificado: ${nameParam || 'Alumno'} (DNI ${dniParam}). Confirma tu llegada para asignar tu cama Reformer.`
+            : 'Pase oficial detectado. Confirma tu asistencia en sala.',
+          false
+        );
+        const cleanUrl = window.location.origin + window.location.pathname + window.location.hash;
+        window.history.replaceState({}, document.title, cleanUrl);
         return;
       }
 
-      // Enlace único privado para el panel administrativo y login de staff
+      const hash = window.location.hash.replace('#', '').toLowerCase();
+      const pathname = window.location.pathname.toLowerCase();
+
       const isStaffRoute =
         hash === 'acceso-staff' ||
         hash === 'staff-portal' ||
         hash === 'admin' ||
         hash === 'staff' ||
         hash === 'admin-login' ||
+        hash === 'mostrador' ||
         pathname === '/admin' ||
         pathname === '/acceso-staff' ||
         pathname === '/staff';
 
       if (isStaffRoute) {
         const savedUserStr = localStorage.getItem('firme_auth_user');
-        if (savedUserStr) {
+        const isRealOwner = sessionStorage.getItem('firme_real_owner') === 'true';
+        if (savedUserStr && !isRealOwner) {
           try {
             const parsed = JSON.parse(savedUserStr);
             if (parsed.role === 'client') {
-              // Bloquear estrictamente a clientes de acceder al portal admin
               setActiveTab('inicio');
               history.replaceState(null, '', window.location.pathname);
-              setToast({
-                title: 'Acceso Denegado',
-                message: 'Tu cuenta tiene perfil de Alumna/Cliente. El portal administrativo es exclusivo para el equipo directivo de FIRME STUDIO (Valentino, Soni, Keyla).',
-                isAlert: true,
-              });
-              return;
-            }
-            if (parsed.role === 'receptionist') {
-              // BLOQUEO ESTRICTO: La recepcionista no puede ver el Panel Admin General
-              setActiveTab('registros-presencial');
-              history.replaceState(null, '', window.location.pathname + '#mostrador');
-              setToast({
-                title: 'Acceso Restringido al Admin General',
-                message: 'Hola Camila. Tu panel exclusivo de trabajo es el Mostrador Presencial. Las finanzas y configuración están reservadas para Administración y Dirección.',
-                isAlert: true,
-              });
+              showToast(
+                'Acceso Denegado',
+                'Tu cuenta tiene perfil de Alumna/Cliente. El portal administrativo es exclusivo para el equipo de FIRME STUDIO.',
+                true
+              );
               return;
             }
           } catch (e) {
@@ -701,6 +307,16 @@ export default function App() {
         return;
       }
 
+      if (
+        hash === 'totem' ||
+        hash === 'totem-qr' ||
+        hash === 'kiosko' ||
+        pathname === '/totem'
+      ) {
+        setActiveTab('staff-hub');
+        return;
+      }
+
       if (hash === 'registro-smartfit') {
         setAuthInitialModality('manual');
         setIsGoogleAuthOpen(true);
@@ -714,6 +330,29 @@ export default function App() {
       } else if (hash === 'registro-presencial' || hash === 'counter') {
         setAuthInitialModality('receptionist');
         setIsGoogleAuthOpen(true);
+      } else if (hash === 'panel-alumno-sala' || hash === 'kiosco') {
+        setActiveTab('kiosco');
+      } else if (hash === 'staff-hub' || hash === 'hub') {
+        const savedUserStr = localStorage.getItem('firme_auth_user');
+        const isRealOwner = sessionStorage.getItem('firme_real_owner') === 'true';
+        if (savedUserStr && !isRealOwner) {
+          try {
+            const parsed = JSON.parse(savedUserStr);
+            if (parsed.role === 'client') {
+              setActiveTab('inicio');
+              history.replaceState(null, '', window.location.pathname);
+              showToast(
+                'Acceso Denegado',
+                'Tu cuenta tiene perfil de Alumna/Cliente. El Hub es exclusivo para el equipo de FIRME STUDIO.',
+                true
+              );
+              return;
+            }
+          } catch (e) {
+            // ignore
+          }
+        }
+        setActiveTab('staff-hub');
       } else if (['inicio', 'horarios', 'mis-clases', 'membresias', 'profesores', 'metodo'].includes(hash)) {
         setActiveTab(hash as MainTabType);
       }
@@ -722,40 +361,107 @@ export default function App() {
     handleRouteCheck();
     window.addEventListener('hashchange', handleRouteCheck);
     return () => window.removeEventListener('hashchange', handleRouteCheck);
-  }, []);
+  }, [showToast]);
 
   const handleSelectTab = (tab: MainTabType) => {
     if (tab === 'registro') {
       setActiveTab('registro');
       window.location.hash = 'registro';
-    } else if (tab === 'admin') {
-      if (currentUser?.role === 'receptionist') {
-        setActiveTab('registros-presencial');
-        setToast({
-          title: 'Acceso Restringido al Admin General',
-          message: 'Tu espacio asignado de trabajo es el Mostrador Presencial. El panel administrativo contiene información financiera y operativa confidencial.',
-          isAlert: true,
-        });
+    } else if (tab === 'kiosco') {
+      const isRealOwner = sessionStorage.getItem('firme_real_owner') === 'true' || currentUser?.role === 'owner_dev';
+      if (currentUser?.role === 'client' && !isRealOwner) {
+        showToast(
+          'Acceso Denegado',
+          'Tu cuenta tiene perfil de Alumna/Cliente. El Panel Alumno/Sala es exclusivo para el equipo de mostrador y recepción de FIRME STUDIO.',
+          true
+        );
         return;
       }
-      if (currentUser?.role === 'client') {
-        setToast({
-          title: 'Acceso Denegado',
-          message: 'Tu cuenta tiene perfil de Alumna/Cliente. El portal administrativo es exclusivo para el equipo de FIRME STUDIO (Valentino, Soni, Keyla).',
-          isAlert: true,
-        });
+      setActiveTab('kiosco');
+      window.location.hash = 'panel-alumno-sala';
+    } else if (tab === 'staff-hub') {
+      const isRealOwner = sessionStorage.getItem('firme_real_owner') === 'true' || currentUser?.role === 'owner_dev';
+      if (currentUser?.role === 'client' && !isRealOwner) {
+        showToast(
+          'Acceso Denegado',
+          'Tu cuenta tiene perfil de Alumna/Cliente. El Hub es exclusivo para el equipo de FIRME STUDIO.',
+          true
+        );
+        return;
+      }
+      setActiveTab('staff-hub');
+      window.location.hash = 'staff-hub';
+    } else if (tab === 'admin') {
+      const isRealOwner = sessionStorage.getItem('firme_real_owner') === 'true' || currentUser?.role === 'owner_dev';
+      if (currentUser?.role === 'client' && !isRealOwner) {
+        showToast(
+          'Acceso Denegado',
+          'Tu cuenta tiene perfil de Alumna/Cliente. El portal administrativo es exclusivo para el equipo de FIRME STUDIO.',
+          true
+        );
         return;
       }
       setActiveTab('admin');
       window.location.hash = 'acceso-staff';
     } else {
       setActiveTab(tab);
-      const staffHashes = ['#admin', '#acceso-staff', '#staff-portal', '#staff', '#admin-login', '#mostrador', '#registros-presencial', '#registro'];
+      const staffHashes = ['#admin', '#acceso-staff', '#staff-portal', '#staff', '#admin-login', '#registro', '#panel-alumno-sala', '#kiosco', '#staff-hub', '#hub', '#totem', '#totem-qr'];
       if (staffHashes.includes(window.location.hash)) {
         history.replaceState(null, '', window.location.pathname);
       }
     }
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleAuthSuccess = (user: AuthUser) => {
+    handleGoogleAuthSuccess(user, () => {
+      setActiveTab('admin');
+    });
+
+    if (pendingBookingAction) {
+      if (pendingBookingAction.type === 'class') {
+        const targetClass = pendingBookingAction.classSession || classesList[0];
+        if (targetClass) {
+          setBookingModalData({
+            classSession: targetClass,
+            type: pendingBookingAction.bookingType || 'reserve',
+          });
+        }
+      } else if (pendingBookingAction.type === 'plan' && pendingBookingAction.plan) {
+        setSelectedPlanForCheckout(pendingBookingAction.plan);
+      }
+      setPendingBookingAction(null);
+      setAuthPurpose('');
+    }
+  };
+
+  const handleUserLogout = async () => {
+    await handleLogout(() => {
+      if (activeTab === 'admin') {
+        setActiveTab('inicio');
+        history.replaceState(null, '', window.location.pathname);
+      }
+    });
+  };
+
+  const handlePerformCheckIn = (bookingId: string) => {
+    const assignedBed = Math.floor(Math.random() * 8) + 1;
+    const nowTime = new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' });
+
+    setBookingsList((prev) =>
+      prev.map((b) =>
+        b.id === bookingId
+          ? {
+              ...b,
+              status: 'asistio',
+              bedNumber: assignedBed,
+              checkInTime: nowTime,
+            }
+          : b
+      )
+    );
+
+    handleGainExp(150, `Check-in en Sala Realizado (Cama #${assignedBed})`);
   };
 
   const handleBookFirstClass = () => {
@@ -771,10 +477,10 @@ export default function App() {
       });
       setAuthPurpose('reservar tu primera clase en Reformer');
       setIsGoogleAuthOpen(true);
-      setToast({
-        title: 'Creación de Cuenta Requerida',
-        message: 'Para agendar tu clase de Pilates Reformer, por favor crea tu cuenta o inicia sesión.',
-      });
+      showToast(
+        'Creación de Cuenta Requerida',
+        'Para agendar tu clase de Pilates Reformer, por favor crea tu cuenta o inicia sesión.'
+      );
       return;
     }
 
@@ -797,10 +503,10 @@ export default function App() {
       });
       setAuthPurpose(`agendar tu plaza en ${session.name} (${session.time} h)`);
       setIsGoogleAuthOpen(true);
-      setToast({
-        title: 'Identificación Necesaria',
-        message: `Para reservar tu cama Reformer en ${session.name}, crea tu cuenta o inicia sesión.`,
-      });
+      showToast(
+        'Identificación Necesaria',
+        `Para reservar tu cama Reformer en ${session.name}, crea tu cuenta o inicia sesión.`
+      );
       return;
     }
 
@@ -820,20 +526,15 @@ export default function App() {
 
     if (isWaitlist) {
       setWaitlistClassIds((prev) => new Set(prev).add(classId));
-      setToast({
-        title: 'Lista de espera activada',
-        message: 'Te avisaremos por WhatsApp si se libera una plaza.',
-      });
+      showToast('Lista de espera activada', 'Te avisaremos por WhatsApp si se libera una plaza.');
     } else {
       setBookedClassIds((prev) => new Set(prev).add(classId));
-      // Increase occupied spot
       setClassesList((prev) =>
         prev.map((c) =>
           c.id === classId ? { ...c, occupiedSpots: Math.min(c.totalSpots, c.occupiedSpots + 1) } : c
         )
       );
 
-      // Record booking for admin view & client profile
       if (session) {
         const medicalSummary = clientData?.healthConditions?.length
           ? `${clientData.healthConditions.join(', ')}${
@@ -866,7 +567,6 @@ export default function App() {
         };
         setBookingsList((prev) => [newRecord, ...prev]);
 
-        // If user wasn't logged in, log them in automatically with their submitted data
         if (!currentUser && clientData) {
           const { role, roleTitle } = determineUserRole(clientData.name, clientData.email);
           const autoUser: AuthUser = {
@@ -892,7 +592,6 @@ export default function App() {
           localStorage.setItem('firme_auth_user', JSON.stringify(autoUser));
         }
 
-        // Also ensure client is registered in the studio's client directory
         const clientEmail = clientData?.email || currentUser?.email;
         const clientName = clientData?.name || currentUser?.name;
         if (clientEmail && clientName) {
@@ -939,283 +638,40 @@ export default function App() {
         }
       }
 
-      // Reward user with +100 EXP for attending/booking Reformer
       handleGainExp(100, `Reserva asegurada en ${session ? session.name : 'Reformer'}`);
     }
-
-    setTimeout(() => {
-      setToast(null);
-    }, 4500);
   };
 
-  // Administrative action handlers
-  const handleAddClass = (newClass: Omit<ClassSession, 'id'>) => {
-    const id = `c-${Date.now()}`;
-    setClassesList((prev) => [{ id, ...newClass }, ...prev]);
-  };
-
-  const handleUpdateClass = (updatedClass: ClassSession) => {
-    setClassesList((prev) =>
-      prev.map((c) => (c.id === updatedClass.id ? updatedClass : c))
-    );
-  };
-
-  const handleDeleteClass = (classId: string) => {
-    setClassesList((prev) => prev.filter((c) => c.id !== classId));
-  };
-
-  const handleUpdateSpots = (classId: string, delta: number) => {
-    setClassesList((prev) =>
-      prev.map((c) => {
-        if (c.id === classId) {
-          const newOccupied = Math.max(0, Math.min(c.totalSpots, c.occupiedSpots + delta));
-          return { ...c, occupiedSpots: newOccupied };
-        }
-        return c;
-      })
-    );
-  };
-
-  const handleAddManualBooking = (booking: Omit<BookingRecord, 'id' | 'bookedAt'>) => {
-    const record: BookingRecord = {
-      ...booking,
-      id: `b-${Date.now()}`,
-      bookedAt: new Date().toLocaleDateString('es-PE', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      }),
-    };
-    setBookingsList((prev) => [record, ...prev]);
-  };
-
-  const handleUpdateBookingStatus = (
-    bookingId: string,
-    status: 'confirmada' | 'asistio' | 'cancelada'
-  ) => {
-    setBookingsList((prev) =>
-      prev.map((b) => (b.id === bookingId ? { ...b, status } : b))
-    );
-  };
-
-  const handleCheckInBooking = (updatedBooking: BookingRecord) => {
-    setBookingsList((prev) =>
-      prev.map((b) => (b.id === updatedBooking.id ? updatedBooking : b))
-    );
-  };
-
-  const handleAssignBed = (bookingId: string, bedNumber: number) => {
-    setBookingsList((prev) =>
-      prev.map((b) => (b.id === bookingId ? { ...b, bedNumber } : b))
-    );
-  };
-
-  const handleUpdateClientCredits = (clientId: string, credits: number) => {
-    setClientsList((prev) =>
-      prev.map((c) => (c.id === clientId ? { ...c, creditsLeft: credits } : c))
-    );
-  };
-
-  const handleResetData = () => {
-    localStorage.removeItem('firme_classes_data');
-    localStorage.removeItem('firme_bookings_data');
-    localStorage.removeItem('firme_clients_data');
-    localStorage.removeItem('firme_transactions_data');
-    localStorage.removeItem('firme_expenses_data');
-    localStorage.removeItem('firme_leads_data');
-    localStorage.removeItem('firme_cash_register_data');
-    setClassesList(MOCK_CLASSES);
-    setBookingsList(INITIAL_BOOKINGS);
-    setClientsList(INITIAL_CLIENTS);
-    setTransactionsList(INITIAL_TRANSACTIONS);
-    setExpensesList(INITIAL_EXPENSES);
-    setLeadsList(INITIAL_LEADS);
-    setCashRegister(INITIAL_CASH_STATE);
-  };
-
-  const handleClearDemoData = () => {
-    localStorage.setItem('firme_bookings_data', JSON.stringify([]));
-    localStorage.setItem('firme_clients_data', JSON.stringify([]));
-    localStorage.setItem('firme_transactions_data', JSON.stringify([]));
-    localStorage.setItem('firme_expenses_data', JSON.stringify([]));
-    localStorage.setItem('firme_leads_data', JSON.stringify([]));
-    localStorage.setItem('firme_cash_register_data', JSON.stringify(INITIAL_CASH_STATE));
-    setBookingsList([]);
-    setClientsList([]);
-    setTransactionsList([]);
-    setExpensesList([]);
-    setLeadsList([]);
-    setCashRegister(INITIAL_CASH_STATE);
-    setToast({
-      title: 'Plataforma en Limpio',
-      message: 'Se han eliminado los datos de prueba. Ahora verás solo la información real que registres.',
-    });
-    setTimeout(() => setToast(null), 4500);
-  };
-
-  // Sub-modules handlers
-  const handleAddClient = (clientData: Omit<ClientProfile, 'id'>) => {
-    const newClient: ClientProfile = {
-      ...clientData,
-      id: `cli-${Date.now()}`,
-    };
-    setClientsList((prev) => [newClient, ...prev]);
-  };
-
-  const handleUpdateClient = (updatedClient: ClientProfile) => {
-    setClientsList((prev) =>
-      prev.map((c) => (c.id === updatedClient.id ? updatedClient : c))
-    );
-  };
-
-  const handleDeleteClient = (clientId: string) => {
-    setClientsList((prev) => prev.filter((c) => c.id !== clientId));
-  };
-
-  const handleAddTransaction = (txData: Omit<CashTransaction, 'id'>) => {
-    const newTx: CashTransaction = {
-      ...txData,
-      id: `tx-${Date.now()}`,
-    };
-    setTransactionsList((prev) => [newTx, ...prev]);
-  };
-
-  const handleUpdateTransaction = (updatedTx: CashTransaction) => {
-    setTransactionsList((prev) =>
-      prev.map((t) => (t.id === updatedTx.id ? updatedTx : t))
-    );
-  };
-
-  const handleDeleteTransaction = (txId: string) => {
-    setTransactionsList((prev) => prev.filter((t) => t.id !== txId));
-  };
-
-  const handleToggleCashRegister = () => {
-    setCashRegister((prev) => ({
-      ...prev,
-      isOpen: !prev.isOpen,
-      openedAt: !prev.isOpen ? new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }) : prev.openedAt,
-      closedAt: prev.isOpen ? new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }) : undefined,
-    }));
-  };
-
-  const handleAddExpense = (expenseData: Omit<ExpenseRecord, 'id'>) => {
-    const newExpense: ExpenseRecord = {
-      ...expenseData,
-      id: `exp-${Date.now()}`,
-    };
-    setExpensesList((prev) => [newExpense, ...prev]);
-  };
-
-  const handleUpdateExpense = (updatedExpense: ExpenseRecord) => {
-    setExpensesList((prev) =>
-      prev.map((e) => (e.id === updatedExpense.id ? updatedExpense : e))
-    );
-  };
-
-  const handleDeleteExpense = (expenseId: string) => {
-    setExpensesList((prev) => prev.filter((e) => e.id !== expenseId));
-  };
-
-  const handleUpdateExpenseStatus = (id: string, status: 'pagado' | 'pendiente') => {
-    setExpensesList((prev) =>
-      prev.map((e) => (e.id === id ? { ...e, status } : e))
-    );
-  };
-
-  const handleAddLead = (leadData: Omit<LeadRecord, 'id' | 'createdAt'>) => {
-    const now = new Date();
-    const newLead: LeadRecord = {
-      ...leadData,
-      id: `lead-${Date.now()}`,
-      createdAt: `${now.toLocaleDateString('es-PE')} ${now.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}`,
-    };
-    setLeadsList((prev) => [newLead, ...prev]);
-  };
-
-  const handleUpdateLead = (updatedLead: LeadRecord) => {
-    setLeadsList((prev) =>
-      prev.map((l) => (l.id === updatedLead.id ? updatedLead : l))
-    );
-  };
-
-  const handleDeleteLead = (leadId: string) => {
-    setLeadsList((prev) => prev.filter((l) => l.id !== leadId));
-  };
-
-  const handleUpdateLeadStatus = (leadId: string, status: LeadRecord['status']) => {
-    setLeadsList((prev) =>
-      prev.map((l) => (l.id === leadId ? { ...l, status } : l))
-    );
-  };
-
-  const handleConvertLeadToClient = (lead: LeadRecord) => {
-    // 1. Mark lead as converted
-    handleUpdateLeadStatus(lead.id, 'convertido');
-
-    // 2. Add as client if not already present
-    const existing = clientsList.find((c) => c.phone.replace(/\D/g, '') === lead.phone.replace(/\D/g, ''));
-    if (!existing) {
-      handleAddClient({
-        name: lead.name,
-        phone: lead.phone,
-        email: lead.email || `${lead.name.toLowerCase().replace(/\s+/g, '.')}@gmail.com`,
-        dni: '70000000',
-        currentPlan: 'Pack 8 Clases',
-        planType: 'pack',
-        creditsLeft: 8,
-        totalAttended: 0,
-        status: 'activo',
-        joinDate: new Date().toLocaleDateString('es-PE'),
-        lastVisit: 'Recién registrado',
-        medicalNotes: lead.notes || 'Convertido desde captación de leads (SJL)',
-      });
-    }
-
-    setToast({
-      title: '¡Prospecto Convertido con Éxito!',
-      message: `${lead.name} ha sido dado de alta en la base de datos de Alumnos con Pack 8.`,
-    });
-    setTimeout(() => setToast(null), 4000);
-  };
-
-  // Cancellation handler for booked classes
   const handleCancelBooking = (classId: string) => {
     const cancelledClass = classesList.find((c) => c.id === classId);
 
-    // Remove from booked
     setBookedClassIds((prev) => {
       const next = new Set(prev);
       next.delete(classId);
       return next;
     });
 
-    // Free up 1 spot
     setClassesList((prev) =>
       prev.map((c) =>
         c.id === classId ? { ...c, occupiedSpots: Math.max(0, c.occupiedSpots - 1) } : c
       )
     );
 
-    // If an automatic availability alert was set for this class, trigger the notification!
     if (alertClassIds.has(classId)) {
-      setToast({
-        title: '🔔 ¡Aviso de disponibilidad automática!',
-        message: `¡Se acaba de liberar 1 cupo en ${cancelledClass ? cancelledClass.name : 'la clase'}! Ya puedes reservarla en el horario.`,
-        isAlert: true,
-      });
+      showToast(
+        '🔔 ¡Aviso de disponibilidad automática!',
+        `¡Se acaba de liberar 1 cupo en ${cancelledClass ? cancelledClass.name : 'la clase'}! Ya puedes reservarla en el horario.`,
+        true,
+        5000
+      );
     } else {
-      setToast({
-        title: 'Reserva cancelada con éxito',
-        message: `Has liberado tu lugar en ${cancelledClass ? cancelledClass.name : 'la clase'}. Tu cupo quedó disponible.`,
-      });
+      showToast(
+        'Reserva cancelada con éxito',
+        `Has liberado tu lugar en ${cancelledClass ? cancelledClass.name : 'la clase'}. Tu cupo quedó disponible.`,
+        false,
+        5000
+      );
     }
-
-    setTimeout(() => {
-      setToast(null);
-    }, 5000);
   };
 
   const handleCancelWaitlist = (classId: string) => {
@@ -1224,16 +680,9 @@ export default function App() {
       next.delete(classId);
       return next;
     });
-    setToast({
-      title: 'Lista de espera actualizada',
-      message: 'Has salido de la lista de espera correctamente.',
-    });
-    setTimeout(() => {
-      setToast(null);
-    }, 4000);
+    showToast('Lista de espera actualizada', 'Has salido de la lista de espera correctamente.');
   };
 
-  // Toggle automatic notification when a full class frees up
   const handleToggleAlert = (session: ClassSession) => {
     if (alertClassIds.has(session.id)) {
       setAlertClassIds((prev) => {
@@ -1241,22 +690,15 @@ export default function App() {
         next.delete(session.id);
         return next;
       });
-      setToast({
-        title: 'Aviso desactivado',
-        message: `Ya no recibirás alertas automáticas para ${session.name}.`,
-      });
+      showToast('Aviso desactivado', `Ya no recibirás alertas automáticas para ${session.name}.`);
     } else {
       setAlertClassIds((prev) => new Set(prev).add(session.id));
-      setToast({
-        title: '🔔 ¡Aviso automático activado!',
-        message: `Te notificaremos de inmediato en cuanto se libere un cupo en ${session.name} (${session.time} h) con ${session.instructor}.`,
-        isAlert: true,
-      });
+      showToast(
+        '🔔 ¡Aviso automático activado!',
+        `Te notificaremos de inmediato en cuanto se libere un cupo en ${session.name} (${session.time} h) con ${session.instructor}.`,
+        true
+      );
     }
-
-    setTimeout(() => {
-      setToast(null);
-    }, 4500);
   };
 
   const handleCancelAlert = (classId: string) => {
@@ -1265,13 +707,7 @@ export default function App() {
       next.delete(classId);
       return next;
     });
-    setToast({
-      title: 'Aviso desactivado',
-      message: 'Aviso automático de cupo cancelado.',
-    });
-    setTimeout(() => {
-      setToast(null);
-    }, 4000);
+    showToast('Aviso desactivado', 'Aviso automático de cupo cancelado.');
   };
 
   const handleSelectPlan = (plan: PricingPlan) => {
@@ -1282,10 +718,10 @@ export default function App() {
       });
       setAuthPurpose(`adquirir la membresía ${plan.name} (${plan.price})`);
       setIsGoogleAuthOpen(true);
-      setToast({
-        title: 'Cuenta Requerida para Adquirir Plan',
-        message: `Para contratar ${plan.name}, por favor crea tu cuenta o inicia sesión.`,
-      });
+      showToast(
+        'Cuenta Requerida para Adquirir Plan',
+        `Para contratar ${plan.name}, por favor crea tu cuenta o inicia sesión.`
+      );
       return;
     }
     setSelectedPlanForCheckout(plan);
@@ -1303,7 +739,6 @@ export default function App() {
       amountPaid: number;
     }
   ) => {
-    // Determine credits granted
     let credits = 1;
     if (plan.id === 'pack-8') credits = 8;
     else if (plan.id === 'ilimitada') credits = 30;
@@ -1313,7 +748,6 @@ export default function App() {
       ? { role: currentUser.role, roleTitle: currentUser.roleTitle || 'Alumna' }
       : determineUserRole(details.clientName, details.clientEmail);
 
-    // Update active user profile
     const updatedUser: AuthUser = {
       id: currentUser?.id || `usr-${Date.now()}`,
       name: details.clientName,
@@ -1332,17 +766,15 @@ export default function App() {
     setCurrentUser(updatedUser);
     localStorage.setItem('firme_auth_user', JSON.stringify(updatedUser));
 
-    // Register income in Finance / Cash Register
-    const newTx: CashTransaction = {
-      id: `tx-${Date.now()}`,
-      type: 'ingreso',
+    const newTx = {
+      type: 'ingreso' as const,
       concept: `Suscripción a ${plan.name}`,
       category:
         plan.id === 'clase-suelta'
-          ? 'clase_suelta'
+          ? ('clase_suelta' as const)
           : plan.id === 'pack-8'
-          ? 'pack_clases'
-          : 'membresia',
+          ? ('pack_clases' as const)
+          : ('membresia' as const),
       amount: details.amountPaid,
       paymentMethod: details.paymentMethod,
       clientName: details.clientName,
@@ -1351,9 +783,8 @@ export default function App() {
       time: new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }),
       notes: `${details.receiptType.toUpperCase()} emitida a DNI/RUC ${details.clientDni}`,
     };
-    setTransactionsList((prev) => [newTx, ...prev]);
+    handleAddTransaction(newTx);
 
-    // Synchronize client profile in studio directory with new credits and plan
     setClientsList((prev) => {
       const exists = prev.some(
         (c) =>
@@ -1404,215 +835,195 @@ export default function App() {
       }
     });
 
-    setToast({
-      title: '¡Suscripción Activada con Éxito!',
-      message: `${details.receiptType.toUpperCase()} ${details.receiptNumber} emitida por S/. ${details.amountPaid}. Ya puedes agendar tu clase.`,
-    });
-    setTimeout(() => setToast(null), 5000);
+    showToast(
+      '¡Suscripción Activada con Éxito!',
+      `${details.receiptType.toUpperCase()} ${details.receiptNumber} emitida por S/. ${details.amountPaid}. Ya puedes agendar tu clase.`,
+      false,
+      5000
+    );
   };
 
-  // Filtered arrays derived for MyClasses component
   const bookedClasses = classesList.filter((c) => bookedClassIds.has(c.id));
   const waitlistClasses = classesList.filter((c) => waitlistClassIds.has(c.id));
   const alertClasses = classesList.filter((c) => alertClassIds.has(c.id));
 
-  // -------------------------------------------------------------
-  // VISTA TOTALMENTE INDEPENDIENTE: ENLACE ÚNICO REGISTRO + QR
-  // -------------------------------------------------------------
+  // Quick Registration Landing
   if (activeTab === 'registro') {
     return (
-      <QuickRegistrationLanding
-        onSuccess={(user) => {
-          handleGoogleAuthSuccess(user);
-          handleSelectTab('horarios');
-        }}
-        onExitToHome={() => handleSelectTab('inicio')}
-      />
+      <Suspense fallback={<FallbackLoader />}>
+        <QuickRegistrationLanding
+          onSuccess={(user) => {
+            handleAuthSuccess(user);
+            handleSelectTab('horarios');
+          }}
+          onExitToHome={() => handleSelectTab('inicio')}
+        />
+      </Suspense>
     );
   }
 
-  // -------------------------------------------------------------
-  // VISTA TOTALMENTE INDEPENDIENTE: PORTAL STAFF / SELECCIÓN DE ESPACIOS
-  // -------------------------------------------------------------
+  // Staff Destination Hub
   if (activeTab === 'staff-hub') {
     return (
-      <StaffDestinationHub
-        currentUser={currentUser}
-        onSelectDestination={handleSelectTab}
-        onLogout={handleLogout}
-      />
+      <div className="min-h-screen bg-[#FAF8F5] text-[#1A1815] font-sans antialiased selection:bg-[#B5654A] selection:text-[#FAF8F5]">
+        <StudioToast toast={toast} onClose={closeToast} />
+        <Suspense fallback={<FallbackLoader />}>
+          <StudioErrorBoundary
+            fallbackTitle="Hub de Personal y Lanzador de Pantallas"
+            fallbackMessage="Ocurrió un inconveniente al cargar el Hub. Puedes reintentar o volver al sitio web."
+            onReset={() => setActiveTab('staff-hub')}
+            onNavigateHome={() => handleSelectTab('inicio')}
+          >
+            <StaffDestinationHub
+              currentUser={currentUser}
+              onSelectDestination={handleSelectTab}
+              onLogout={handleUserLogout}
+              bookings={bookingsList}
+              classes={classesList}
+              clients={clientsList}
+              onCheckInBooking={handleCheckInBooking}
+              onAssignBed={handleAssignBed}
+              onGainExp={handleGainExp}
+              showToast={showToast}
+              initialTotemMode={
+                typeof window !== 'undefined' &&
+                (window.location.hash.replace('#', '').toLowerCase() === 'totem' ||
+                 window.location.hash.replace('#', '').toLowerCase() === 'totem-qr' ||
+                 window.location.pathname.toLowerCase() === '/totem')
+              }
+            />
+          </StudioErrorBoundary>
+        </Suspense>
+      </div>
     );
   }
 
-  // -------------------------------------------------------------
-  // VISTA TOTALMENTE INDEPENDIENTE: PANEL DE REGISTROS PRESENCIAL
-  // -------------------------------------------------------------
-  if (activeTab === 'registros-presencial') {
-    return (
-      <ReceptionDeskPanel
-        currentUser={currentUser}
-        classes={classesList}
-        bookings={bookingsList}
-        clients={clientsList}
-        transactions={transactionsList}
-        cashRegister={cashRegister}
-        onAddClient={handleAddClient}
-        onUpdateClient={handleUpdateClient}
-        onAddTransaction={handleAddTransaction}
-        onCheckInBooking={handleCheckInBooking}
-        onAssignBed={handleAssignBed}
-        onUpdateBookingStatus={handleUpdateBookingStatus}
-        onAddManualBooking={handleAddManualBooking}
-        onSelectDestination={handleSelectTab}
-        onLogout={handleLogout}
-      />
-    );
-  }
-
-  // -------------------------------------------------------------
-  // VISTA TOTALMENTE INDEPENDIENTE: PORTAL ADMIN / BACK-OFFICE
-  // No comparte Header, ni Footer, ni elementos de la web pública de alumnos.
-  // -------------------------------------------------------------
-  if (activeTab === 'admin') {
-    // ESCUDO DE SEGURIDAD: Si una recepcionista intenta acceder a 'admin', renderizar únicamente el panel de recepción
-    if (currentUser?.role === 'receptionist') {
-      return (
-        <ReceptionDeskPanel
-          currentUser={currentUser}
-          classes={classesList}
-          bookings={bookingsList}
-          clients={clientsList}
-          transactions={transactionsList}
-          cashRegister={cashRegister}
-          onAddClient={handleAddClient}
-          onUpdateClient={handleUpdateClient}
-          onAddTransaction={handleAddTransaction}
-          onCheckInBooking={handleCheckInBooking}
-          onAssignBed={handleAssignBed}
-          onUpdateBookingStatus={handleUpdateBookingStatus}
-          onAddManualBooking={handleAddManualBooking}
-          onSelectDestination={handleSelectTab}
-          onLogout={handleLogout}
-        />
-      );
-    }
-
+  // Panel Alumno / Sala (Completamente separado e independiente del Panel Admin)
+  if (activeTab === 'kiosco') {
     return (
       <div className="min-h-screen bg-[#FAF8F5] text-[#1A1815] font-sans antialiased selection:bg-[#B5654A] selection:text-[#FAF8F5]">
-        {/* Toast Notification para acciones administrativas */}
-        {toast && (
-          <div
-            role="status"
-            aria-live="polite"
-            className={`fixed bottom-6 right-6 z-50 max-w-sm w-full p-4 rounded-lg shadow-xl border animate-in slide-in-from-bottom-5 duration-300 flex items-start justify-between ${
-              toast.isAlert
-                ? 'bg-[#1A1815] text-[#FAF8F5] border-[#B5654A]'
-                : 'bg-[#1A1815] text-[#FAF8F5] border-[#FAF8F5]/10'
-            }`}
+        <StudioToast toast={toast} onClose={closeToast} />
+        <Suspense fallback={<FallbackLoader />}>
+          <StudioErrorBoundary
+            fallbackTitle="Panel Alumno / Sala"
+            fallbackMessage="Ocurrió un inconveniente al cargar la estación de mostrador. Puedes reintentar o volver al Hub."
+            onReset={() => setActiveTab('kiosco')}
+            onNavigateHome={() => handleSelectTab('staff-hub')}
           >
-            <div className="flex items-start space-x-3">
-              {toast.isAlert ? (
-                <BellRing className="w-5 h-5 text-[#B5654A] shrink-0 mt-0.5 animate-bounce" />
-              ) : (
-                <CheckCircle2 className="w-5 h-5 text-[#B5654A] shrink-0 mt-0.5" />
-              )}
-              <div>
-                <p className="text-sm font-medium text-[#FAF8F5]">{toast.title}</p>
-                <p className="text-xs text-[#FAF8F5]/70 mt-0.5 leading-relaxed">{toast.message}</p>
-              </div>
-            </div>
-            <button
-              onClick={() => setToast(null)}
-              className="text-[#FAF8F5]/60 hover:text-[#FAF8F5] p-1 -mr-1 cursor-pointer"
-              aria-label="Cerrar notificación"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        )}
+            <StudentRoomPanel
+              currentUser={currentUser}
+              classes={classesList}
+              bookings={bookingsList}
+              clients={clientsList}
+              onCheckInBooking={handleCheckInBooking}
+              onAssignBed={handleAssignBed}
+              onUpdateClientCredits={handleUpdateClientCredits}
+              onGoToStaffHub={() => handleSelectTab('staff-hub')}
+              onGoToAdminPanel={() => handleSelectTab('admin')}
+              onExitToPublic={() => handleSelectTab('inicio')}
+              onLogout={handleUserLogout}
+            />
+          </StudioErrorBoundary>
+        </Suspense>
+      </div>
+    );
+  }
 
-        <AdminPanel
-          currentUser={currentUser}
-          onUpdateCurrentUser={setCurrentUser}
-          classes={classesList}
-          bookings={bookingsList}
-          clients={clientsList}
-          transactions={transactionsList}
-          expenses={expensesList}
-          leads={leadsList}
-          cashRegister={cashRegister}
-          onAddClass={handleAddClass}
-          onUpdateClass={handleUpdateClass}
-          onDeleteClass={handleDeleteClass}
-          onUpdateSpots={handleUpdateSpots}
-          onAddManualBooking={handleAddManualBooking}
-          onUpdateBookingStatus={handleUpdateBookingStatus}
-          onResetData={handleResetData}
-          onExitToPublic={() => handleSelectTab('inicio')}
-          onAddClient={handleAddClient}
-          onUpdateClient={handleUpdateClient}
-          onDeleteClient={handleDeleteClient}
-          onAddTransaction={handleAddTransaction}
-          onUpdateTransaction={handleUpdateTransaction}
-          onDeleteTransaction={handleDeleteTransaction}
-          onToggleCashRegister={handleToggleCashRegister}
-          onAddExpense={handleAddExpense}
-          onUpdateExpense={handleUpdateExpense}
-          onDeleteExpense={handleDeleteExpense}
-          onUpdateExpenseStatus={handleUpdateExpenseStatus}
-          onAddLead={handleAddLead}
-          onUpdateLead={handleUpdateLead}
-          onDeleteLead={handleDeleteLead}
-          onUpdateLeadStatus={handleUpdateLeadStatus}
-          onConvertLeadToClient={handleConvertLeadToClient}
-          onCheckInBooking={handleCheckInBooking}
-          onAssignBed={handleAssignBed}
-          onUpdateClientCredits={handleUpdateClientCredits}
-          onClearDemoData={handleClearDemoData}
-          onOpenQrModal={() => setIsQrModalOpen(true)}
-          onGoToReceptionDesk={() => handleSelectTab('registros-presencial')}
-          onGoToStaffHub={() => handleSelectTab('staff-hub')}
-        />
+  // Admin Panel Back-Office
+  if (activeTab === 'admin') {
+    return (
+      <div className="min-h-screen bg-[#FAF8F5] text-[#1A1815] font-sans antialiased selection:bg-[#B5654A] selection:text-[#FAF8F5]">
+        <StudioToast toast={toast} onClose={closeToast} />
+        <Suspense fallback={<FallbackLoader />}>
+          <StudioErrorBoundary
+            fallbackTitle="Panel de Control General (Back-Office)"
+            fallbackMessage="Ocurrió un inconveniente al cargar el panel administrativo. Puedes reintentar o volver al Hub de Trabajadores."
+            onReset={() => setActiveTab('admin')}
+            onNavigateHome={() => handleSelectTab('staff-hub')}
+          >
+            <AdminPanel
+              currentUser={currentUser}
+              onUpdateCurrentUser={setCurrentUser}
+              classes={classesList}
+              bookings={bookingsList}
+              clients={clientsList}
+              transactions={transactionsList}
+              expenses={expensesList}
+              leads={leadsList}
+              cashRegister={cashRegister}
+              onAddClass={handleAddClass}
+              onUpdateClass={handleUpdateClass}
+              onDeleteClass={handleDeleteClass}
+              onUpdateSpots={handleUpdateSpots}
+              onAddManualBooking={handleAddManualBooking}
+              onUpdateBookingStatus={handleUpdateBookingStatus}
+              onResetData={handleResetData}
+              onExitToPublic={() => handleSelectTab('inicio')}
+              onAddClient={handleAddClient}
+              onUpdateClient={handleUpdateClient}
+              onDeleteClient={handleDeleteClient}
+              onAddTransaction={handleAddTransaction}
+              onUpdateTransaction={handleUpdateTransaction}
+              onDeleteTransaction={handleDeleteTransaction}
+              onToggleCashRegister={handleToggleCashRegister}
+              onAddExpense={handleAddExpense}
+              onUpdateExpense={handleUpdateExpense}
+              onDeleteExpense={handleDeleteExpense}
+              onUpdateExpenseStatus={handleUpdateExpenseStatus}
+              onAddLead={handleAddLead}
+              onUpdateLead={handleUpdateLead}
+              onDeleteLead={handleDeleteLead}
+              onUpdateLeadStatus={handleUpdateLeadStatus}
+              onConvertLeadToClient={handleConvertLeadToClient}
+              onCheckInBooking={handleCheckInBooking}
+              onAssignBed={handleAssignBed}
+              onUpdateClientCredits={handleUpdateClientCredits}
+              onClearDemoData={handleClearDemoData}
+              onOpenQrModal={() => setIsQrModalOpen(true)}
+              onGoToStaffHub={() => handleSelectTab('staff-hub')}
+            />
+          </StudioErrorBoundary>
+        </Suspense>
       </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-[#FAF8F5] text-[#1A1815] font-sans antialiased flex flex-col selection:bg-[#B5654A] selection:text-[#FAF8F5]">
-      
-      {/* Global Notification Toast */}
-      {toast && (
-        <div
-          role="status"
-          aria-live="polite"
-          className={`fixed bottom-6 right-6 z-50 max-w-sm w-full p-4 rounded-lg shadow-xl border animate-in slide-in-from-bottom-5 duration-300 flex items-start justify-between ${
-            toast.isAlert
-              ? 'bg-[#1A1815] text-[#FAF8F5] border-[#B5654A]'
-              : 'bg-[#1A1815] text-[#FAF8F5] border-[#FAF8F5]/10'
-          }`}
+      <StudioToast toast={toast} onClose={closeToast} />
+
+      {/* Sticky Banner de Simulación de Rol Alumna para el Owner */}
+      {sessionStorage.getItem('firme_simulated_role') === 'client' && (
+        <aside
+          aria-label="Banner de modo de simulación de rol"
+          className="sticky top-0 z-50 bg-gradient-to-r from-stone-950 via-[#B5654A] to-stone-950 text-white px-4 py-2.5 shadow-xl border-b border-[#B5654A]/50 flex items-center justify-between gap-3 text-xs backdrop-blur-md"
         >
-          <div className="flex items-start space-x-3">
-            {toast.isAlert ? (
-              <BellRing className="w-5 h-5 text-[#B5654A] shrink-0 mt-0.5 animate-bounce" />
-            ) : (
-              <CheckCircle2 className="w-5 h-5 text-[#B5654A] shrink-0 mt-0.5" />
-            )}
-            <div>
-              <p className="text-sm font-medium text-[#FAF8F5]">{toast.title}</p>
-              <p className="text-xs text-[#FAF8F5]/70 mt-0.5 leading-relaxed">{toast.message}</p>
-            </div>
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="flex h-2.5 w-2.5 relative shrink-0">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+            </span>
+            <span className="bg-white/20 text-white font-bold px-2 py-0.5 rounded-md text-[10px] uppercase tracking-wider shrink-0">
+              🎭 Vista Previa: Alumna
+            </span>
+            <span className="font-medium text-stone-100 truncate">
+              Previsualizando la experiencia web de alumna (reserva de clases reformer, créditos de packs, FIRME PASS QR y niveles).
+            </span>
           </div>
           <button
-            onClick={() => setToast(null)}
-            className="text-[#FAF8F5]/60 hover:text-[#FAF8F5] p-1 -mr-1 cursor-pointer"
-            aria-label="Cerrar notificación"
+            type="button"
+            onClick={() => {
+              sessionStorage.removeItem('firme_simulated_role');
+              handleSelectTab('admin');
+            }}
+            className="bg-white text-stone-950 hover:bg-stone-100 font-bold px-3.5 py-1.5 rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-1.5 shrink-0 active:scale-95"
           >
-            <X className="w-4 h-4" />
+            <span>↩️ Volver al Panel Owner</span>
           </button>
-        </div>
+        </aside>
       )}
 
-      {/* 1. HEADER (Única barra superior con navegación por pestañas y acceso a cuenta) */}
+      {/* Header */}
       <Header
         activeTab={activeTab}
         onSelectTab={handleSelectTab}
@@ -1634,9 +1045,8 @@ export default function App() {
         onOpenEditProfile={() => setIsEditProfileOpen(true)}
       />
 
-      {/* 2. MAIN INDEPENDENT TAB CONTENT PANELS */}
+      {/* Main Tab Panels */}
       <main className="flex-grow">
-        {/* TAB 1: INICIO */}
         {activeTab === 'inicio' && (
           <div
             id="tabpanel-inicio"
@@ -1644,43 +1054,28 @@ export default function App() {
             aria-labelledby="tab-btn-inicio"
             className="animate-in fade-in duration-300"
           >
-            {/* Hero Section */}
             <Hero
               onBookFirstClass={handleBookFirstClass}
               onViewSchedule={() => handleSelectTab('horarios')}
               onOpenBiomechanicsQuiz={() => setIsBiomechanicsQuizOpen(true)}
             />
-
-
-
-            {/* Boutique & Retail Showcase */}
             <BoutiqueSection
               userExp={currentUser?.exp ?? 1350}
               onRedeemWithExp={(productName, expCost) => handleSpendExp(expCost, productName)}
               onNotifyProduct={(productName) => {
-                setToast({
-                  title: 'Producto Separado en Recepción',
-                  message: `Hemos reservado "${productName}". Puedes abonarlo y recogerlo al llegar a tu sesión.`,
-                });
-                setTimeout(() => setToast(null), 4000);
+                showToast(
+                  'Producto Separado en Recepción',
+                  `Hemos reservado "${productName}". Puedes abonarlo y recogerlo al llegar a tu sesión.`
+                );
               }}
             />
-
-            {/* Testimonials */}
             <Testimonials />
-
-            {/* FAQ Interactive Accordion */}
             <FaqSection />
-
-            {/* Location & Studio Features */}
             <LocationSection />
-
-            {/* Final CTA */}
             <FinalCTA onBookClass={handleBookFirstClass} />
           </div>
         )}
 
-        {/* TAB 2: HORARIOS Y RESERVAS */}
         {activeTab === 'horarios' && (
           <div
             id="tabpanel-horarios"
@@ -1699,7 +1094,6 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 3: MIS CLASES */}
         {activeTab === 'mis-clases' && (
           <div
             id="tabpanel-mis-clases"
@@ -1722,7 +1116,6 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 4: MI NIVEL & EXP (SISTEMA DE GAMIFICACIÓN Y LOGROS) */}
         {activeTab === 'niveles' && (
           <div
             id="tabpanel-niveles"
@@ -1730,16 +1123,17 @@ export default function App() {
             aria-labelledby="tab-btn-niveles"
             className="animate-in fade-in duration-300 py-4"
           >
-            <StudentProgressTab
-              currentUser={currentUser}
-              onGainExp={handleGainExp}
-              onExploreSchedule={() => handleSelectTab('horarios')}
-              onOpenCheckInModal={() => setIsCheckInModalOpen(true)}
-            />
+            <Suspense fallback={<FallbackLoader />}>
+              <StudentProgressTab
+                currentUser={currentUser}
+                onGainExp={handleGainExp}
+                onExploreSchedule={() => handleSelectTab('horarios')}
+                onOpenCheckInModal={() => setIsCheckInModalOpen(true)}
+              />
+            </Suspense>
           </div>
         )}
 
-        {/* TAB 4: MEMBRESÍAS Y PRECIOS */}
         {activeTab === 'membresias' && (
           <div
             id="tabpanel-membresias"
@@ -1751,7 +1145,6 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 5: INSTRUCTORES & VENTANILLA DE MÉTODOS */}
         {activeTab === 'profesores' && (
           <div
             id="tabpanel-profesores"
@@ -1763,7 +1156,6 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 6: MÉTODO PILATES (VENTANILLA DENTRO DE INSTRUCTORES) */}
         {activeTab === 'metodo' && (
           <div
             id="tabpanel-metodo"
@@ -1776,145 +1168,155 @@ export default function App() {
         )}
       </main>
 
-      {/* 4. FOOTER */}
+      {/* Footer */}
       <Footer onSelectTab={handleSelectTab} />
 
-      {/* BOOKING / WAITLIST MODAL CON DATOS COMPLETOS & GOOGLE AUTOFILL */}
-      <BookingModal
-        data={bookingModalData}
-        onClose={() => setBookingModalData(null)}
-        onConfirmBooking={handleConfirmBooking}
-        currentUser={currentUser}
-        onOpenGoogleAuth={() => setIsGoogleAuthOpen(true)}
-      />
-
-      {/* CLIENT CHECK-IN & MI CUENTA MODAL */}
-      <ClientCheckInModal
-        isOpen={isCheckInModalOpen}
-        onClose={() => setIsCheckInModalOpen(false)}
-        currentUser={currentUser}
-        userBookings={bookingsList.filter(
-          (b) =>
-            currentUser &&
-            (b.clientEmail.toLowerCase() === currentUser.email.toLowerCase() ||
-              b.clientName.toLowerCase().includes(currentUser.name.toLowerCase().split(' ')[0]))
+      {/* Modals with Lazy Loading */}
+      <Suspense fallback={null}>
+        {bookingModalData && (
+          <BookingModal
+            data={bookingModalData}
+            onClose={() => setBookingModalData(null)}
+            onConfirmBooking={handleConfirmBooking}
+            currentUser={currentUser}
+            onOpenGoogleAuth={() => setIsGoogleAuthOpen(true)}
+          />
         )}
-        onOpenGoogleAuth={() => {
-          setIsCheckInModalOpen(false);
-          setIsGoogleAuthOpen(true);
-        }}
-        onLogout={handleLogout}
-        onPerformCheckIn={handlePerformCheckIn}
-        onOpenEditProfile={() => {
-          setIsCheckInModalOpen(false);
-          setIsEditProfileOpen(true);
-        }}
-        onGoToReceptionDesk={() => {
-          setIsCheckInModalOpen(false);
-          handleSelectTab('registros-presencial');
-        }}
-        onGoToAdminPanel={() => {
-          setIsCheckInModalOpen(false);
-          handleSelectTab('admin');
-        }}
-        onGoToStaffHub={() => {
-          setIsCheckInModalOpen(false);
-          handleSelectTab('staff-hub');
-        }}
-      />
 
-      {/* MODAL DE EDICION DE DATOS DEL PERFIL & SALUD */}
-      <EditProfileModal
-        isOpen={isEditProfileOpen}
-        onClose={() => setIsEditProfileOpen(false)}
-        currentUser={currentUser}
-        onSave={handleSaveProfile}
-      />
+        {isCheckInModalOpen && (
+          <ClientCheckInModal
+            isOpen={isCheckInModalOpen}
+            onClose={() => {
+              setIsCheckInModalOpen(false);
+              setScannedDniParam(null);
+              setScannedNameParam(null);
+            }}
+            currentUser={currentUser}
+            userBookings={bookingsList.filter(
+              (b) =>
+                currentUser &&
+                (b.clientEmail.toLowerCase() === currentUser.email.toLowerCase() ||
+                  b.clientName.toLowerCase().includes(currentUser.name.toLowerCase().split(' ')[0]))
+            )}
+            allBookings={bookingsList}
+            scannedDni={scannedDniParam}
+            scannedName={scannedNameParam}
+            onOpenGoogleAuth={() => {
+              setIsCheckInModalOpen(false);
+              setIsGoogleAuthOpen(true);
+            }}
+            onLogout={handleUserLogout}
+            onPerformCheckIn={handlePerformCheckIn}
+            onOpenEditProfile={() => {
+              setIsCheckInModalOpen(false);
+              setIsEditProfileOpen(true);
+            }}
+            onGoToAdminPanel={() => {
+              setIsCheckInModalOpen(false);
+              handleSelectTab('admin');
+            }}
+            onGoToStaffHub={() => {
+              setIsCheckInModalOpen(false);
+              handleSelectTab('staff-hub');
+            }}
+          />
+        )}
 
-      {/* CENTRO UNIFICADO DE REGISTRO & ACCESO (GOOGLE AUTH + FORMULARIO BÁSICO) */}
-      <GoogleAuthModal
-        isOpen={isGoogleAuthOpen}
-        onClose={() => {
-          setIsGoogleAuthOpen(false);
-          setPendingBookingAction(null);
-          setAuthPurpose('');
-          sessionStorage.setItem('firme_quick_auth_dismissed', 'true');
-        }}
-        onSuccess={handleGoogleAuthSuccess}
-        purpose={authPurpose}
-        initialMode={authInitialModality}
-      />
+        {isEditProfileOpen && (
+          <EditProfileModal
+            isOpen={isEditProfileOpen}
+            onClose={() => setIsEditProfileOpen(false)}
+            currentUser={currentUser}
+            onSave={handleSaveProfile}
+          />
+        )}
 
-      {/* SIMULADOR DE CHECKOUT & PAGO DE PLAN */}
-      <PlanCheckoutModal
-        isOpen={selectedPlanForCheckout !== null}
-        plan={selectedPlanForCheckout}
-        onClose={() => setSelectedPlanForCheckout(null)}
-        currentUser={currentUser}
-        onOpenGoogleAuth={() => setIsGoogleAuthOpen(true)}
-        onPaymentSuccess={handlePlanPaymentSuccess}
-      />
+        {isGoogleAuthOpen && (
+          <GoogleAuthModal
+            isOpen={isGoogleAuthOpen}
+            onClose={() => {
+              setIsGoogleAuthOpen(false);
+              setPendingBookingAction(null);
+              setAuthPurpose('');
+              sessionStorage.setItem('firme_quick_auth_dismissed', 'true');
+            }}
+            onSuccess={handleAuthSuccess}
+            purpose={authPurpose}
+            initialMode={authInitialModality}
+          />
+        )}
 
-      {/* MODAL DE NIVEL DE ESTUDIANTE, EXP & MISIONES */}
-      <StudentLevelModal
-        isOpen={isLevelModalOpen}
-        onClose={() => setIsLevelModalOpen(false)}
-        currentUser={currentUser}
-        onGainExp={handleGainExp}
-      />
+        {selectedPlanForCheckout !== null && (
+          <PlanCheckoutModal
+            isOpen={selectedPlanForCheckout !== null}
+            plan={selectedPlanForCheckout}
+            onClose={() => setSelectedPlanForCheckout(null)}
+            currentUser={currentUser}
+            onOpenGoogleAuth={() => setIsGoogleAuthOpen(true)}
+            onPaymentSuccess={handlePlanPaymentSuccess}
+          />
+        )}
 
-      {/* KIOSCO TÓTEM PARA TABLET DE RECEPCIÓN (JR. AKAPANA 1261) */}
-      <ReceptionKioskModal
-        isOpen={isKioskModalOpen}
-        onClose={() => setIsKioskModalOpen(false)}
-        bookings={bookingsList}
-        clients={clientsList}
-        onCheckInSuccess={(updated) => {
-          setBookingsList((prev) =>
-            prev.map((b) => (b.id === updated.id ? updated : b))
-          );
-        }}
-        onGainExp={handleGainExp}
-        onOpenQrModal={() => setIsQrModalOpen(true)}
-        onOpenAuthModal={(modality) => {
-          setIsKioskModalOpen(false);
-          setAuthInitialModality(modality || 'manual');
-          setIsGoogleAuthOpen(true);
-        }}
-      />
+        {isLevelModalOpen && (
+          <StudentLevelModal
+            isOpen={isLevelModalOpen}
+            onClose={() => setIsLevelModalOpen(false)}
+            currentUser={currentUser}
+            onGainExp={handleGainExp}
+          />
+        )}
 
-      {/* MODAL DE CÓDIGO QR Y ENLACE ÚNICO DE REGISTRO PARA MOSTRADOR */}
-      <ReceptionQrModal
-        isOpen={isQrModalOpen}
-        onClose={() => setIsQrModalOpen(false)}
-      />
+        {isKioskModalOpen && (
+          <ReceptionKioskModal
+            isOpen={isKioskModalOpen}
+            onClose={() => setIsKioskModalOpen(false)}
+            bookings={bookingsList}
+            clients={clientsList}
+            onCheckInSuccess={(updated) => {
+              setBookingsList((prev) =>
+                prev.map((b) => (b.id === updated.id ? updated : b))
+              );
+            }}
+            onGainExp={handleGainExp}
+            onOpenQrModal={() => setIsQrModalOpen(true)}
+            onOpenAuthModal={(modality) => {
+              setIsKioskModalOpen(false);
+              setAuthInitialModality(modality || 'manual');
+              setIsGoogleAuthOpen(true);
+            }}
+          />
+        )}
 
-      {/* TEST BIOMECÁNICO & POSTURAL EN 4 PASOS */}
-      <BiomechanicsQuizModal
-        isOpen={isBiomechanicsQuizOpen}
-        onClose={() => setIsBiomechanicsQuizOpen(false)}
-        onSelectSchedule={() => {
-          setIsBiomechanicsQuizOpen(false);
-          handleSelectTab('horarios');
-        }}
-      />
+        {isQrModalOpen && (
+          <ReceptionQrModal
+            isOpen={isQrModalOpen}
+            onClose={() => setIsQrModalOpen(false)}
+          />
+        )}
 
-      {/* ASISTENTE VIRTUAL CONCIERGE IA (GEMINI & HEURÍSTICA ESTUDIO) */}
-      <AiAssistantWidget
-        onNavigateToSchedule={() => handleSelectTab('horarios')}
-        onOpenBiomechanicsQuiz={() => setIsBiomechanicsQuizOpen(true)}
-      />
+        {isBiomechanicsQuizOpen && (
+          <BiomechanicsQuizModal
+            isOpen={isBiomechanicsQuizOpen}
+            onClose={() => setIsBiomechanicsQuizOpen(false)}
+            onSelectSchedule={() => {
+              setIsBiomechanicsQuizOpen(false);
+              handleSelectTab('horarios');
+            }}
+          />
+        )}
 
-      {/* FLOATING WHATSAPP BUTTON */}
-      <WhatsAppFloat />
+        <AiAssistantWidget
+          onNavigateToSchedule={() => handleSelectTab('horarios')}
+          onOpenBiomechanicsQuiz={() => setIsBiomechanicsQuizOpen(true)}
+        />
+      </Suspense>
 
-      {/* BOTÓN FLOTANTE DE ACCESO EXCLUSIVO STAFF (OWNER Y ADMINS) */}
+      {/* Floating Action Buttons */}
       <FloatingAdminButton
         currentUser={currentUser}
         activeTab={activeTab}
         onSelectTab={handleSelectTab}
       />
-
     </div>
   );
 }

@@ -12,6 +12,7 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   Sparkles,
+  LayoutDashboard,
 } from 'lucide-react';
 import {
   CashTransaction,
@@ -19,8 +20,12 @@ import {
   ClientProfile,
   LeadRecord,
   ClassSession,
+  BookingRecord,
+  CashRegisterState,
+  AdminSubTab,
 } from '../../types';
 import { WeeklyOccupancyBarChart } from './WeeklyOccupancyBarChart';
+import { AdminDashboardTab } from './AdminDashboardTab';
 
 interface AdminReportsTabProps {
   classes: ClassSession[];
@@ -28,15 +33,38 @@ interface AdminReportsTabProps {
   transactions: CashTransaction[];
   expenses: ExpenseRecord[];
   leads: LeadRecord[];
+  bookings?: BookingRecord[];
+  cashRegister?: CashRegisterState;
+  onNavigateTab?: (tab: AdminSubTab) => void;
+  onNavigateToSchedule?: () => void;
+  onAddManualBooking?: (booking: Omit<BookingRecord, 'id' | 'bookedAt'>) => void;
+  onQuickOpenCashModal?: () => void;
+  onQuickOpenClassModal?: () => void;
+  onQuickOpenClientModal?: () => void;
+  onQuickOpenExpenseModal?: () => void;
+  onQuickOpenScannerModal?: () => void;
+  initialSubView?: 'finanzas' | 'dashboard';
 }
 
 export const AdminReportsTab: React.FC<AdminReportsTabProps> = ({
-  classes,
-  clients,
-  transactions,
-  expenses,
-  leads,
+  classes = [],
+  clients = [],
+  transactions = [],
+  expenses = [],
+  leads = [],
+  bookings = [],
+  cashRegister,
+  onNavigateTab,
+  onNavigateToSchedule,
+  onAddManualBooking,
+  onQuickOpenCashModal,
+  onQuickOpenClassModal,
+  onQuickOpenClientModal,
+  onQuickOpenExpenseModal,
+  onQuickOpenScannerModal,
+  initialSubView,
 }) => {
+  const [activeView, setActiveView] = useState<'finanzas' | 'dashboard'>(initialSubView || 'finanzas');
   const [reportPeriod, setReportPeriod] = useState<'mes_actual' | 'historico'>('mes_actual');
 
   // Calculations
@@ -138,12 +166,61 @@ export const AdminReportsTab: React.FC<AdminReportsTabProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Top Header */}
-      <div className="bg-[#FAF8F5] border border-[#E4DED4] rounded-2xl p-5 shadow-xs flex flex-col md:flex-row items-center justify-between gap-4">
-        <div>
-          <h2 className="font-fraunces text-xl font-medium text-[#1A1815]">
-            Reportes Financieros & Operativos
-          </h2>
+      {/* Sub-tabs: Métricas Financieras vs Resumen Diario (Dashboard) */}
+      <div className="bg-[#FAF8F5] border border-[#E4DED4] p-1.5 rounded-2xl flex items-center gap-1.5 w-fit shadow-xs">
+        <button
+          type="button"
+          onClick={() => setActiveView('finanzas')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
+            activeView === 'finanzas'
+              ? 'bg-[#1A1815] text-white shadow-xs'
+              : 'text-[#6B655C] hover:text-[#1A1815] hover:bg-white/60'
+          }`}
+        >
+          <BarChart3 className="w-3.5 h-3.5 text-[#B5654A]" />
+          <span>Análisis Financiero & Métricas</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveView('dashboard')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
+            activeView === 'dashboard'
+              ? 'bg-[#1A1815] text-white shadow-xs'
+              : 'text-[#6B655C] hover:text-[#1A1815] hover:bg-white/60'
+          }`}
+        >
+          <LayoutDashboard className="w-3.5 h-3.5 text-emerald-600" />
+          <span>Resumen Operativo (Hoy)</span>
+        </button>
+      </div>
+
+      {activeView === 'dashboard' ? (
+        <AdminDashboardTab
+          classes={classes}
+          bookings={bookings}
+          clients={clients}
+          transactions={transactions}
+          expenses={expenses}
+          leads={leads}
+          cashRegister={cashRegister}
+          onNavigateTab={onNavigateTab}
+          onNavigateToSchedule={onNavigateToSchedule}
+          onAddManualBooking={onAddManualBooking}
+          onQuickOpenCashModal={onQuickOpenCashModal}
+          onQuickOpenClassModal={onQuickOpenClassModal}
+          onQuickOpenClientModal={onQuickOpenClientModal}
+          onQuickOpenExpenseModal={onQuickOpenExpenseModal}
+          onQuickOpenScannerModal={onQuickOpenScannerModal}
+        />
+      ) : (
+        <>
+          {/* Top Header */}
+          <div className="bg-[#FAF8F5] border border-[#E4DED4] rounded-2xl p-5 shadow-xs flex flex-col md:flex-row items-center justify-between gap-4">
+            <div>
+              <h2 className="font-fraunces text-xl font-medium text-[#1A1815]">
+                Reportes Financieros & Operativos
+              </h2>
           <p className="text-xs text-[#6B655C] mt-0.5">
             Métricas consolidadas de rentabilidad, aforo por instructor y descarga de data en Excel / CSV.
           </p>
@@ -357,6 +434,8 @@ export const AdminReportsTab: React.FC<AdminReportsTabProps> = ({
           </button>
         </div>
       </div>
+        </>
+      )}
     </div>
   );
 };

@@ -9,10 +9,12 @@ import {
   AlertCircle,
   QrCode,
   UserCheck,
+  Camera,
 } from 'lucide-react';
 import { BookingRecord, ClientProfile } from '../types';
 import { supabaseService } from '../services/supabaseService';
 import { isSupabaseConfigured } from '../lib/supabase';
+import { CameraQrScannerModal } from './CameraQrScannerModal';
 
 interface ReceptionKioskModalProps {
   isOpen: boolean;
@@ -49,6 +51,7 @@ export const ReceptionKioskModal: React.FC<ReceptionKioskModalProps> = ({
   } | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [autoResetTimer, setAutoResetTimer] = useState<number>(0);
+  const [isCameraScannerOpen, setIsCameraScannerOpen] = useState(false);
 
   useEffect(() => {
     const updateTime = () => {
@@ -140,11 +143,15 @@ export const ReceptionKioskModal: React.FC<ReceptionKioskModalProps> = ({
     setDniInput('');
   };
 
-  const handlePerformCheckInByDni = async () => {
-    const trimmedDni = dniInput.trim();
+  const handlePerformCheckInByDni = async (overrideDni?: string) => {
+    const trimmedDni = (overrideDni || dniInput).trim();
     if (!trimmedDni || trimmedDni.length < 6) {
       setErrorMessage('Por favor ingresa un número de DNI válido (mínimo 6-8 dígitos).');
       return;
+    }
+
+    if (overrideDni) {
+      setDniInput(overrideDni);
     }
 
     // 1. Intentar check-in en Supabase Cloud
@@ -217,6 +224,15 @@ export const ReceptionKioskModal: React.FC<ReceptionKioskModalProps> = ({
     });
 
     setAutoResetTimer(8);
+  };
+
+  const handleCameraScanSuccess = (data: { dni?: string; name?: string; memId?: string; raw: string }) => {
+    const searchDni = (data.dni || data.memId || '').trim();
+    if (searchDni) {
+      handlePerformCheckInByDni(searchDni);
+    } else {
+      setErrorMessage('No se pudo identificar un DNI en el código QR escaneado.');
+    }
   };
 
   return (
@@ -365,8 +381,17 @@ export const ReceptionKioskModal: React.FC<ReceptionKioskModalProps> = ({
                 <span>Validar Ingreso a Sala</span>
               </button>
 
-              {/* Opciones para alumnas nuevas sin cuenta previa */}
+              {/* Opciones para alumnas nuevas sin cuenta previa o con Pase QR */}
               <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsCameraScannerOpen(true)}
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-emerald-300 hover:text-white transition-colors py-2 px-3.5 rounded-xl border border-emerald-500/40 hover:border-emerald-400 bg-emerald-950/40 hover:bg-emerald-900/60 cursor-pointer shadow-xs"
+                >
+                  <Camera className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Escanear Pase QR con Cámara</span>
+                </button>
+
                 {(onOpenQrModal || onOpenAuthModal) && (
                   <button
                     type="button"
@@ -469,6 +494,13 @@ export const ReceptionKioskModal: React.FC<ReceptionKioskModalProps> = ({
         <span>FIRME STUDIO · Pilates Reformer & Boutique · 8 Reformers Allegro 2</span>
         <span>Atención en Recepción: Jr. Akapana 1261, Lima - SJL</span>
       </div>
+
+      {/* Modal de Escáner de QR por Cámara */}
+      <CameraQrScannerModal
+        isOpen={isCameraScannerOpen}
+        onClose={() => setIsCameraScannerOpen(false)}
+        onScanSuccess={handleCameraScanSuccess}
+      />
     </div>
   );
 };

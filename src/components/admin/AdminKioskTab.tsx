@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import {
+  Camera,
   CheckCircle2,
   Search,
   Maximize2,
@@ -14,28 +15,68 @@ import {
   Hash,
   ChevronRight,
   ShieldAlert,
+  Building,
+  User,
+  Coffee,
+  Calendar,
+  CreditCard,
+  HeartPulse,
+  History,
+  Activity,
+  Award,
+  RefreshCw,
+  Plus,
+  Phone,
+  Mail,
+  MapPin,
 } from 'lucide-react';
-import { ClassSession, BookingRecord, ClientProfile, DayOfWeek } from '../../types';
-import { DAYS_OF_WEEK } from '../../data/mockData';
+import {
+  ClassSession,
+  BookingRecord,
+  ClientProfile,
+  DayOfWeek,
+  StudioRoom,
+  DEFAULT_STUDIO_ROOMS,
+} from '../../types';
+import { DAYS_OF_WEEK, MOCK_CLASSES } from '../../data/mockData';
 import { studioApi } from '../../services/api';
 import { supabaseService } from '../../services/supabaseService';
 import { isSupabaseConfigured } from '../../lib/supabase';
+import { CameraQrScannerModal } from '../CameraQrScannerModal';
+import { HealthyBarSection } from './HealthyBarSection';
+import { AdminStudent360Section } from './AdminStudent360Section';
 
 interface AdminKioskTabProps {
-  classes: ClassSession[];
-  bookings: BookingRecord[];
-  clients: ClientProfile[];
+  classes?: ClassSession[];
+  bookings?: BookingRecord[];
+  clients?: ClientProfile[];
   onCheckInSuccess?: (updatedBooking: BookingRecord) => void;
   onAssignBed?: (bookingId: string, bedNumber: number) => void;
+  onOpenQrModal?: () => void;
+  initialSubView?: 'sala' | 'alumna' | 'cafe';
+  onUpdateClientCredits?: (clientId: string, credits: number) => void;
 }
 
 export const AdminKioskTab: React.FC<AdminKioskTabProps> = ({
-  classes,
-  bookings,
-  clients,
+  classes = [],
+  bookings = [],
+  clients = [],
   onCheckInSuccess,
   onAssignBed,
+  onOpenQrModal,
+  initialSubView = 'sala',
+  onUpdateClientCredits,
 }) => {
+  const [activeSubView, setActiveSubView] = useState<'sala' | 'alumna' | 'cafe'>(initialSubView);
+  const [selectedStudentForDetail, setSelectedStudentForDetail] = useState<ClientProfile | null>(null);
+  const [studentSearchQuery, setStudentSearchQuery] = useState('');
+  const [renewalSuccessMsg, setRenewalSuccessMsg] = useState<string | null>(null);
+
+  const [selectedRoomId, setSelectedRoomId] = useState<string>('sala-1');
+  const [crossRoomAlert, setCrossRoomAlert] = useState<{
+    booking: BookingRecord;
+    targetRoom: StudioRoom;
+  } | null>(null);
   const [isFullscreenKiosk, setIsFullscreenKiosk] = useState(false);
   const [selectedDay, setSelectedDay] = useState<DayOfWeek>('lun');
   const [searchQuery, setSearchQuery] = useState('');
@@ -46,69 +87,113 @@ export const AdminKioskTab: React.FC<AdminKioskTabProps> = ({
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
   const [isWalkInOpen, setIsWalkInOpen] = useState(false);
   const [walkInClientDni, setWalkInClientDni] = useState('');
+  const [isCameraScannerOpen, setIsCameraScannerOpen] = useState(false);
+  const [noClassWarningAlert, setNoClassWarningAlert] = useState<{
+    client?: ClientProfile;
+    query: string;
+    rawName?: string;
+  } | null>(null);
+
+  // Fallbacks seguros para evitar pantallas blancas o fallos de renderizado
+  const safeClasses = useMemo(() => {
+    return Array.isArray(classes) && classes.length > 0 ? classes : MOCK_CLASSES;
+  }, [classes]);
+
+  const safeBookings = useMemo(() => {
+    return Array.isArray(bookings) ? bookings.filter(Boolean) : [];
+  }, [bookings]);
+
+  const safeClients = useMemo(() => {
+    return Array.isArray(clients) ? clients.filter(Boolean) : [];
+  }, [clients]);
+
+  // Estabilizar el callback de onCheckInSuccess para evitar re-suscripciones WebSocket innecesarias
+  const onCheckInSuccessRef = React.useRef(onCheckInSuccess);
+  onCheckInSuccessRef.current = onCheckInSuccess;
 
   // Suscripción en tiempo real a Supabase (WebSockets)
   useEffect(() => {
     if (!isSupabaseConfigured()) return;
 
-    const unsubscribe = supabaseService.subscribeToBookings(({ newRecord }) => {
-      if (newRecord) {
-        if (onCheckInSuccess) {
-          onCheckInSuccess(newRecord);
+    try {
+      const unsubscribe = supabaseService.subscribeToBookings(({ newRecord }) => {
+        if (newRecord) {
+          if (onCheckInSuccessRef.current) {
+            onCheckInSuccessRef.current(newRecord);
+          }
+          if (newRecord.status === 'asistio') {
+            setFeedbackMessage(`⚡ Supabase Live: ${newRecord.clientName} marcó check-in en Cama #${newRecord.bedNumber || 'Asignada'}`);
+          }
         }
-        if (newRecord.status === 'asistio') {
-          setFeedbackMessage(`⚡ Supabase Live: ${newRecord.clientName} marcó check-in en Cama #${newRecord.bedNumber || 'Asignada'}`);
+      });
+
+      return () => {
+        if (typeof unsubscribe === 'function') {
+          unsubscribe();
         }
-      }
-    });
+      };
+    } catch (err) {
+      console.warn('Realtime subscription error in AdminKioskTab:', err);
+    }
+  }, []);
 
-    return () => {
-      unsubscribe();
-    };
-  }, [onCheckInSuccess]);
+  const studioRooms = DEFAULT_STUDIO_ROOMS;
+  const currentRoom = studioRooms.find((r) => r.id === selectedRoomId) || studioRooms[0];
 
-  // Classes for the active day
+  // Helper to determine the room of a class
+  const getClassRoomId = (c: ClassSession): string => {
+    if (c.roomId) return c.roomId;
+    return c.classType === 'Reformer' ? 'sala-1' : 'sala-2';
+  };
+
+  // Classes for the active room
+  const roomClasses = useMemo(() => {
+    return safeClasses.filter((c) => c && getClassRoomId(c) === selectedRoomId);
+  }, [safeClasses, selectedRoomId]);
+
+  // Classes for the active day in this room
   const dayClasses = useMemo(() => {
-    return classes.filter((c) => c.day === selectedDay);
-  }, [classes, selectedDay]);
+    return roomClasses.filter((c) => c && c.day === selectedDay);
+  }, [roomClasses, selectedDay]);
 
   // Active class session
   const activeClass = useMemo(() => {
-    const found = classes.find((c) => c.id === selectedClassId);
-    return found || dayClasses[0] || classes[0];
-  }, [classes, selectedClassId, dayClasses]);
+    const found = roomClasses.find((c) => c && c.id === selectedClassId && c.day === selectedDay);
+    return found || dayClasses[0] || roomClasses[0] || null;
+  }, [roomClasses, selectedClassId, dayClasses, selectedDay]);
 
   // Bookings belonging to the selected class
   const classBookings = useMemo(() => {
     if (!activeClass) return [];
-    return bookings.filter((b) => b.classId === activeClass.id && b.status !== 'cancelada');
-  }, [bookings, activeClass]);
+    return safeBookings.filter((b) => b && b.classId === activeClass.id && b.status !== 'cancelada');
+  }, [safeBookings, activeClass]);
 
   // Search filtered results (by DNI or client name)
   const searchResults = useMemo(() => {
     if (!searchQuery.trim()) return [];
     const q = searchQuery.toLowerCase().trim();
-    return bookings.filter(
+    return safeBookings.filter(
       (b) =>
+        b &&
         b.status !== 'cancelada' &&
         ((b.clientName?.toLowerCase() || '').includes(q) ||
           (b.clientDni && b.clientDni.includes(q)) ||
           (b.clientPhone && b.clientPhone.includes(q)))
     );
-  }, [bookings, searchQuery]);
+  }, [safeBookings, searchQuery]);
 
   // Map of Bed 1..8 with assigned booking
   const bedMap = useMemo(() => {
     const map: { [bedNum: number]: BookingRecord | undefined } = {};
     for (let i = 1; i <= 8; i++) {
-      map[i] = classBookings.find((b) => b.bedNumber === i);
+      map[i] = classBookings.find((b) => b && b.bedNumber === i);
     }
     return map;
   }, [classBookings]);
 
   // Bookings without a bed yet
   const unassignedBookings = useMemo(() => {
-    return classBookings.filter((b) => !b.bedNumber);
+    return classBookings.filter((b) => b && !b.bedNumber);
   }, [classBookings]);
 
   const handleSelectBed = (bedNum: number) => {
@@ -182,14 +267,9 @@ export const AdminKioskTab: React.FC<AdminKioskTabProps> = ({
     }
   };
 
-  const handleWalkInCheckIn = () => {
+  const executeWalkInForClient = (client: ClientProfile) => {
     if (!activeClass) {
       setFeedbackMessage('No hay ninguna sesión de clase disponible en este horario.');
-      return;
-    }
-    const client = clients.find((c) => c.dni === walkInClientDni.trim());
-    if (!client) {
-      setFeedbackMessage('No se encontró ninguna alumna con ese DNI en la base del estudio.');
       return;
     }
 
@@ -230,14 +310,291 @@ export const AdminKioskTab: React.FC<AdminKioskTabProps> = ({
     setFeedbackMessage(`Check-in express completado para ${client.name} en Cama #${emptyBed}.`);
   };
 
+  const handleWalkInCheckIn = () => {
+    const client = clients.find((c) => c.dni === walkInClientDni.trim());
+    if (!client) {
+      setFeedbackMessage('No se encontró ninguna alumna con ese DNI en la base del estudio.');
+      return;
+    }
+    executeWalkInForClient(client);
+  };
+
+  const handleQrScanSuccess = (data: { dni?: string; name?: string; memId?: string; raw: string }) => {
+    const searchDni = (data.dni || data.memId || '').trim();
+    if (!searchDni) {
+      setFeedbackMessage('No se pudo identificar un DNI o código válido en el QR escaneado.');
+      return;
+    }
+
+    // 1. Buscar si tiene reserva en la clase activa de esta sala
+    const inCurrentClass = classBookings.find(
+      (b) => b && (b.clientDni === searchDni || (data.name && b.clientName?.toLowerCase() === data.name.toLowerCase()))
+    );
+
+    if (inCurrentClass) {
+      handlePerformCheckIn(inCurrentClass);
+      setCrossRoomAlert(null);
+      setFeedbackMessage(`📱 QR Escaneado con éxito en ${currentRoom.shortName}: Check-in confirmado para ${inCurrentClass.clientName}.`);
+      return;
+    }
+
+    // 2. Buscar si tiene reserva en otra clase de ESTA MISMA SALA
+    const inThisRoomBooking = safeBookings.find((b) => {
+      if (!b || b.status === 'cancelada') return false;
+      const matches = (b.clientDni === searchDni || (data.name && b.clientName?.toLowerCase() === data.name.toLowerCase()));
+      if (!matches) return false;
+      const cls = safeClasses.find((c) => c.id === b.classId);
+      return cls && getClassRoomId(cls) === selectedRoomId;
+    });
+
+    if (inThisRoomBooking) {
+      setSelectedClassId(inThisRoomBooking.classId);
+      handlePerformCheckIn(inThisRoomBooking);
+      setCrossRoomAlert(null);
+      setFeedbackMessage(`📱 QR Escaneado: Se encontró reserva en clase ${inThisRoomBooking.className} (${inThisRoomBooking.classTime} h) en ${currentRoom.shortName}. Check-in confirmado.`);
+      return;
+    }
+
+    // 3. ¡VALIDACIÓN CRUZADA DE SALAS! ¿Tiene reserva en OTRA sala?
+    const inOtherRoomBooking = safeBookings.find((b) => {
+      if (!b || b.status === 'cancelada') return false;
+      return (b.clientDni === searchDni || (data.name && b.clientName?.toLowerCase() === data.name.toLowerCase()));
+    });
+
+    if (inOtherRoomBooking) {
+      const otherCls = safeClasses.find((c) => c.id === inOtherRoomBooking.classId);
+      const otherRoomId = otherCls ? getClassRoomId(otherCls) : (selectedRoomId === 'sala-1' ? 'sala-2' : 'sala-1');
+      const otherRoom = studioRooms.find((r) => r.id === otherRoomId) || studioRooms[0];
+
+      setCrossRoomAlert({
+        booking: inOtherRoomBooking,
+        targetRoom: otherRoom,
+      });
+      setFeedbackMessage(`⚠️ ATENCIÓN: ${inOtherRoomBooking.clientName} tiene reserva en ${otherRoom.name} (${inOtherRoomBooking.className} - ${inOtherRoomBooking.classTime}h).`);
+      return;
+    }
+
+    // 4. Si no tiene reserva activa en ninguna clase ni sala para hoy: Mostrar AVISO de sin clase
+    const matchingClient = safeClients.find(
+      (c) => c && (c.dni === searchDni || (data.name && c.name?.toLowerCase() === data.name.toLowerCase()))
+    );
+
+    setCrossRoomAlert(null);
+    setNoClassWarningAlert({
+      client: matchingClient,
+      query: searchDni,
+      rawName: data.name,
+    });
+    setFeedbackMessage(
+      matchingClient
+        ? `⚠️ Alumna sin clase registrada: ${matchingClient.name} (DNI ${matchingClient.dni}) tiene ${matchingClient.creditsLeft} créditos pero no tiene reserva activa.`
+        : `⚠️ Código o DNI sin reserva registrada: ${searchDni}`
+    );
+  };
+
   return (
     <div className={`space-y-6 ${isFullscreenKiosk ? 'fixed inset-0 z-50 bg-[#FAF8F5] p-6 overflow-y-auto' : ''}`}>
+      {/* 0. Cabecera Principal del Panel Alumno/Sala & Selector de Sub-vistas */}
+      <div className="bg-white border border-[#E4DED4] rounded-3xl p-4 sm:p-5 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-center gap-3.5">
+          <div className="w-12 h-12 rounded-2xl bg-[#FAF2E8] border border-[#B5654A]/30 flex items-center justify-center text-[#B5654A] shadow-xs">
+            <Building className="w-6 h-6" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="font-fraunces text-xl sm:text-2xl font-bold text-[#1A1815]">
+                Panel Alumno/Sala
+              </h1>
+              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-[#B5654A] text-white">
+                Sede SJL
+              </span>
+            </div>
+            <p className="text-xs text-[#6B655C] mt-0.5">
+              Control de salas Reformer, fichas 360° de alumnas y barra Café & Bienestar.
+            </p>
+          </div>
+        </div>
+
+        {/* Selector de Sub-vistas */}
+        <div className="flex items-center gap-1.5 p-1 bg-[#FAF8F5] rounded-2xl border border-[#E4DED4] overflow-x-auto">
+          <button
+            type="button"
+            onClick={() => setActiveSubView('sala')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+              activeSubView === 'sala'
+                ? 'bg-[#B5654A] text-white shadow-xs'
+                : 'text-[#6B655C] hover:text-[#1A1815] hover:bg-[#F1ECE5]'
+            }`}
+          >
+            <Building className="w-4 h-4" />
+            <span>Control Sala & Camas</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setActiveSubView('alumna');
+              if (!selectedStudentForDetail && safeClients.length > 0) {
+                setSelectedStudentForDetail(safeClients[0]);
+              }
+            }}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+              activeSubView === 'alumna'
+                ? 'bg-[#B5654A] text-white shadow-xs'
+                : 'text-[#6B655C] hover:text-[#1A1815] hover:bg-[#F1ECE5]'
+            }`}
+          >
+            <User className="w-4 h-4" />
+            <span>Ficha 360° Alumna ({safeClients.length})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveSubView('cafe')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+              activeSubView === 'cafe'
+                ? 'bg-[#B5654A] text-white shadow-xs'
+                : 'text-[#6B655C] hover:text-[#1A1815] hover:bg-[#F1ECE5]'
+            }`}
+          >
+            <Coffee className="w-4 h-4" />
+            <span>Café & Bienestar</span>
+            <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-emerald-600 text-white">
+              Healthy
+            </span>
+          </button>
+        </div>
+      </div>
+
+      {activeSubView === 'cafe' && (
+        <HealthyBarSection
+          clients={safeClients}
+          selectedRoomId={selectedRoomId}
+          selectedClient={selectedStudentForDetail}
+        />
+      )}
+
+      {activeSubView === 'alumna' && (
+        <AdminStudent360Section
+          clients={safeClients}
+          bookings={safeBookings}
+          classes={safeClasses}
+          onGoToHealthyBar={(client) => {
+            setSelectedStudentForDetail(client);
+            setActiveSubView('cafe');
+          }}
+          onUpdateClientCredits={onUpdateClientCredits}
+        />
+      )}
+
+      {activeSubView === 'sala' && (
+        <div className="space-y-6">
+          {/* 1. Selector de Salas & Módulo de Recepción */}
+          <div className="bg-white border border-[#E4DED4] rounded-2xl p-4 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-[#FAF2E8] border border-[#B5654A]/30 flex items-center justify-center text-[#B5654A] shrink-0">
+            <Building className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-wider text-[#B5654A] flex items-center gap-1.5">
+              <span>Módulo de Salas & Recepción</span>
+              <span className="text-[#DDD5C9]">·</span>
+              <span className="text-[#6B655C] font-normal">Sede San Juan de Lurigancho</span>
+            </div>
+            <div className="font-fraunces text-base font-bold text-[#1A1815]">
+              Estación Activa: {currentRoom.name}
+            </div>
+          </div>
+        </div>
+
+        {/* Botones de Selección de Sala */}
+        <div className="flex items-center gap-2 overflow-x-auto p-1 bg-[#FAF8F5] rounded-xl border border-[#E4DED4]">
+          {studioRooms.map((room) => {
+            const isSelected = room.id === selectedRoomId;
+            const roomDayClasses = safeClasses.filter((c) => getClassRoomId(c) === room.id && c.day === selectedDay);
+            const classIds = roomDayClasses.map((c) => c.id);
+            const totalBookingsToday = safeBookings.filter((b) => classIds.includes(b.classId) && b.status !== 'cancelada').length;
+
+            return (
+              <button
+                key={room.id}
+                type="button"
+                onClick={() => {
+                  setSelectedRoomId(room.id);
+                  setCrossRoomAlert(null);
+                  const firstCls = safeClasses.find((c) => c.day === selectedDay && getClassRoomId(c) === room.id);
+                  if (firstCls) setSelectedClassId(firstCls.id);
+                  setFeedbackMessage(`Cambiando a estación: ${room.name}`);
+                }}
+                className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-2 shrink-0 ${
+                  isSelected
+                    ? 'bg-[#1A1815] text-[#FAF8F5] shadow-xs'
+                    : 'text-[#6B655C] hover:text-[#1A1815] hover:bg-[#F1ECE5]'
+                }`}
+              >
+                <div className={`w-2 h-2 rounded-full ${isSelected ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-400'}`} />
+                <span>{room.shortName}</span>
+                <span
+                  className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                    isSelected ? 'bg-[#B5654A] text-white' : 'bg-[#E4DED4] text-[#1A1815]'
+                  }`}
+                >
+                  {totalBookingsToday} reservadas
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* 2. Alerta de Alumna en Sala Incorrecta */}
+      {crossRoomAlert && (
+        <div className="p-4 bg-amber-50 border-2 border-amber-300 rounded-2xl text-xs text-amber-900 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in slide-in-from-top-2 duration-200 shadow-md">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-amber-200 text-amber-900 flex items-center justify-center shrink-0">
+              <ShieldAlert className="w-5 h-5 text-amber-800" />
+            </div>
+            <div>
+              <div className="font-bold text-sm text-amber-950">
+                ¡Alumna con Reserva en Otra Sala! ({crossRoomAlert.booking.clientName})
+              </div>
+              <p className="text-amber-800 text-xs mt-0.5">
+                Esta alumna tiene reserva en <strong>{crossRoomAlert.targetRoom.name}</strong> para la clase{' '}
+                <strong>{crossRoomAlert.booking.className} ({crossRoomAlert.booking.classTime}h)</strong>. Estás en la estación de {currentRoom.shortName}.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedRoomId(crossRoomAlert.targetRoom.id);
+                setSelectedClassId(crossRoomAlert.booking.classId);
+                handlePerformCheckIn(crossRoomAlert.booking);
+                setCrossRoomAlert(null);
+              }}
+              className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl shadow-xs transition-colors cursor-pointer"
+            >
+              Cambiar a {crossRoomAlert.targetRoom.shortName} y Registrar
+            </button>
+            <button
+              type="button"
+              onClick={() => setCrossRoomAlert(null)}
+              className="p-2 text-amber-700 hover:text-amber-900 hover:bg-amber-100 rounded-xl cursor-pointer"
+              title="Cerrar alerta"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Top Banner / Controls */}
       <div className="bg-[#FAF8F5] border border-[#E4DED4] rounded-2xl p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex flex-wrap items-center gap-2 mb-1">
             <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#B5654A]/10 text-[#B5654A] uppercase tracking-wider">
-              Punto de Recepción Express
+              {currentRoom.shortName} • Check-in
             </span>
             <span className="text-xs text-[#8C8479]">• Sede San Juan de Lurigancho</span>
             <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1.5">
@@ -246,14 +603,24 @@ export const AdminKioskTab: React.FC<AdminKioskTabProps> = ({
             </span>
           </div>
           <h2 className="font-fraunces text-2xl font-medium text-[#1A1815]">
-            Kiosco de Auto-Check-in & Asignación de Camas
+            Kiosco de Check-in · {currentRoom.name}
           </h2>
           <p className="text-xs text-[#6B655C] mt-1">
-            Validación de ingreso para alumnas por DNI, selección táctil de Reformer Allegro 2 y emisión de pase de sala.
+            Validación de ingreso para alumnas por DNI, selección táctil de Reformer y emisión de pase de sala.
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <button
+            type="button"
+            onClick={() => setIsCameraScannerOpen(true)}
+            className="px-4 py-2 rounded-xl bg-[#1A1815] hover:bg-[#322C27] text-white text-xs font-semibold transition-all cursor-pointer inline-flex items-center gap-2 shadow-sm hover:scale-102"
+            title={`Escanear el código QR para ${currentRoom.shortName}`}
+          >
+            <Camera className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Escanear Pase QR ({currentRoom.shortName})</span>
+          </button>
+
           <button
             type="button"
             onClick={() => setIsWalkInOpen(true)}
@@ -273,7 +640,7 @@ export const AdminKioskTab: React.FC<AdminKioskTabProps> = ({
             }`}
           >
             {isFullscreenKiosk ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
-            <span>{isFullscreenKiosk ? 'Salir de Modo Kiosco' : 'Abrir Modo Kiosco Tablet'}</span>
+            <span>{isFullscreenKiosk ? 'Salir de Modo Kiosco' : `Tótem Tablet (${currentRoom.shortName})`}</span>
           </button>
         </div>
       </div>
@@ -437,7 +804,7 @@ export const AdminKioskTab: React.FC<AdminKioskTabProps> = ({
                       type="button"
                       onClick={() => {
                         setSelectedDay(d.key);
-                        const firstClass = classes.find((c) => c.day === d.key);
+                        const firstClass = roomClasses.find((c) => c && c.day === d.key);
                         if (firstClass) setSelectedClassId(firstClass.id);
                       }}
                       className={`py-2 px-1 rounded-xl text-center transition-all cursor-pointer ${
@@ -447,7 +814,9 @@ export const AdminKioskTab: React.FC<AdminKioskTabProps> = ({
                       }`}
                     >
                       <div className="text-[10px] uppercase font-bold">{d.shortLabel}</div>
-                      <div className="text-[11px] font-semibold mt-0.5">{d.dateLabel.split(' ')[0]}</div>
+                      <div className="text-[11px] font-semibold mt-0.5">
+                        {d.dateLabel ? d.dateLabel.split(' ')[0] : d.shortLabel}
+                      </div>
                     </button>
                   );
                 })}
@@ -461,8 +830,8 @@ export const AdminKioskTab: React.FC<AdminKioskTabProps> = ({
               <div className="space-y-2">
                 {dayClasses.map((cls) => {
                   const isSelected = activeClass?.id === cls.id;
-                  const confirmedCount = bookings.filter((b) => b.classId === cls.id && b.status !== 'cancelada').length;
-                  const attendedCount = bookings.filter((b) => b.classId === cls.id && b.status === 'asistio').length;
+                  const confirmedCount = safeBookings.filter((b) => b && b.classId === cls.id && b.status !== 'cancelada').length;
+                  const attendedCount = safeBookings.filter((b) => b && b.classId === cls.id && b.status === 'asistio').length;
 
                   return (
                     <button
@@ -535,9 +904,9 @@ export const AdminKioskTab: React.FC<AdminKioskTabProps> = ({
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
               <div>
                 <h3 className="font-fraunces text-lg font-medium text-[#1A1815] flex items-center gap-2">
-                  <span>Sala Reformer Balanced Body</span>
+                  <span>{currentRoom.name}</span>
                   <span className="text-xs font-sans px-2.5 py-0.5 rounded-full bg-[#1A1815] text-[#FAF8F5] font-semibold">
-                    8 Camas Allegro 2
+                    {currentRoom.capacity} Camas / Puestos
                   </span>
                 </h3>
                 <p className="text-xs text-[#6B655C]">
@@ -546,7 +915,7 @@ export const AdminKioskTab: React.FC<AdminKioskTabProps> = ({
                       {activeClass.name} • {activeClass.time} • Instructora: <strong>{activeClass.instructor}</strong>
                     </>
                   ) : (
-                    'Selecciona una clase en turno'
+                    `Sin clases programadas para hoy en ${currentRoom.shortName}`
                   )}
                 </p>
               </div>
@@ -588,7 +957,7 @@ export const AdminKioskTab: React.FC<AdminKioskTabProps> = ({
             <div className="p-4 bg-[#F1ECE5] rounded-xl border border-[#E4DED4]">
               <div className="text-center mb-3">
                 <span className="text-[10px] font-bold uppercase tracking-widest text-[#8C8479] bg-[#FAF8F5] px-3 py-1 rounded-full border border-[#E4DED4]">
-                  Frente de Sala • Espejos & Atrio de Instructora
+                  {currentRoom.shortName} • Frente de Sala (Espejos & Atrio)
                 </span>
               </div>
 
@@ -647,7 +1016,7 @@ export const AdminKioskTab: React.FC<AdminKioskTabProps> = ({
                       <div className="my-2 py-1.5 px-2 bg-black/5 rounded-lg text-center">
                         <div className="h-1.5 w-full bg-gradient-to-r from-zinc-400 via-zinc-300 to-zinc-400 rounded-full mb-1" />
                         <span className="text-[9px] font-mono uppercase tracking-wider text-zinc-600">
-                          Allegro 2 Reformer
+                          {currentRoom.shortName} • Cama
                         </span>
                       </div>
 
@@ -887,8 +1256,8 @@ export const AdminKioskTab: React.FC<AdminKioskTabProps> = ({
                   O selecciona una alumna con créditos activos:
                 </span>
                 <div className="max-h-40 overflow-y-auto space-y-1.5 pr-1">
-                  {clients
-                    .filter((c) => c.status === 'activo')
+                  {safeClients
+                    .filter((c) => c && c.status === 'activo')
                     .slice(0, 5)
                     .map((client) => (
                       <button
@@ -928,6 +1297,116 @@ export const AdminKioskTab: React.FC<AdminKioskTabProps> = ({
                   className="px-4 py-2.5 rounded-xl bg-[#B5654A] hover:bg-[#9A5340] disabled:opacity-50 text-white text-xs font-semibold shadow-xs cursor-pointer"
                 >
                   Confirmar Asistencia & Asignar Cama
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+        </div>
+      )}
+
+      {/* Modal de Escáner por Cámara */}
+      <CameraQrScannerModal
+        isOpen={isCameraScannerOpen}
+        onClose={() => setIsCameraScannerOpen(false)}
+        onScanSuccess={handleQrScanSuccess}
+      />
+
+      {/* Modal: AVISO NO TIENE CLASES REGISTRADAS EN RECEPCIÓN */}
+      {noClassWarningAlert && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#1A1815]/60 backdrop-blur-xs animate-in fade-in duration-200"
+          onClick={() => setNoClassWarningAlert(null)}
+        >
+          <div
+            className="bg-white rounded-3xl border-2 border-amber-500 max-w-md w-full shadow-2xl relative text-[#1A1815] overflow-hidden animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="h-2.5 bg-gradient-to-r from-amber-400 via-rose-500 to-amber-500" />
+            
+            <button
+              onClick={() => setNoClassWarningAlert(null)}
+              className="absolute top-4 right-4 p-2 rounded-full text-[#6B655C] hover:text-[#1A1815] hover:bg-[#F1ECE5] transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="p-6 sm:p-7 text-center">
+              <div className="w-16 h-16 rounded-2xl bg-amber-50 border-2 border-amber-300 flex items-center justify-center text-amber-600 mx-auto mb-3 shadow-xs">
+                <AlertCircle className="w-9 h-9" />
+              </div>
+
+              <span className="inline-block px-3 py-1 rounded-full text-[11px] font-bold uppercase bg-amber-100 text-amber-900 border border-amber-300 mb-2">
+                Aviso de Mostrador
+              </span>
+
+              <h3 className="font-fraunces text-2xl font-bold text-[#1A1815] leading-tight">
+                NO TIENE CLASES REGISTRADAS
+              </h3>
+
+              <p className="text-xs text-[#6B655C] mt-1.5 leading-relaxed">
+                {noClassWarningAlert.client
+                  ? `La alumna está registrada en el sistema, pero NO tiene ninguna clase reservada para hoy.`
+                  : `El código QR o número de DNI ingresado no figura con ninguna clase reservada en el sistema.`}
+              </p>
+
+              {noClassWarningAlert.client ? (
+                <div className="my-4 p-3.5 bg-[#FAF8F5] border border-[#E4DED4] rounded-2xl text-left space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-[#1A1815]">{noClassWarningAlert.client.name}</span>
+                    <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                      {noClassWarningAlert.client.creditsLeft} créditos disponibles
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-[#6B655C]">
+                    DNI: <strong className="font-mono text-[#1A1815]">{noClassWarningAlert.client.dni}</strong> • Plan: {noClassWarningAlert.client.currentPlan}
+                  </div>
+                </div>
+              ) : (
+                <div className="my-4 p-3.5 bg-[#FAF8F5] border border-[#E4DED4] rounded-xl text-xs font-mono text-[#1A1815]">
+                  DNI / Código: <strong>{noClassWarningAlert.query}</strong>
+                </div>
+              )}
+
+              <div className="space-y-2 pt-1">
+                {noClassWarningAlert.client && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (noClassWarningAlert.client) {
+                        executeWalkInForClient(noClassWarningAlert.client);
+                      }
+                      setNoClassWarningAlert(null);
+                    }}
+                    className="w-full py-2.5 px-4 rounded-xl bg-[#B5654A] hover:bg-[#9A5340] text-white font-bold text-xs flex items-center justify-center gap-2 cursor-pointer shadow-xs transition-colors"
+                  >
+                    <span>Asignar Cama Walk-in ({currentRoom.shortName})</span>
+                  </button>
+                )}
+
+                {noClassWarningAlert.client && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedStudentForDetail(noClassWarningAlert.client || null);
+                      setActiveSubView('alumna');
+                      setNoClassWarningAlert(null);
+                    }}
+                    className="w-full py-2.5 px-4 rounded-xl bg-white hover:bg-[#FAF8F5] border border-[#DDD5C9] text-[#1A1815] font-semibold text-xs flex items-center justify-center gap-2 cursor-pointer transition-colors"
+                  >
+                    <span>Ver Ficha 360° de la Alumna</span>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setNoClassWarningAlert(null)}
+                  className="w-full py-2 px-4 rounded-xl bg-[#F1ECE5] hover:bg-[#E4DED4] text-[#6B655C] font-semibold text-xs cursor-pointer transition-colors"
+                >
+                  Cerrar Aviso
                 </button>
               </div>
             </div>

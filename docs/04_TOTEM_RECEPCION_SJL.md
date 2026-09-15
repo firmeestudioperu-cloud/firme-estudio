@@ -1,4 +1,4 @@
-﻿# 📱 Módulo 04: Tótem de Auto Check-In SJL (Recepción)
+# 📱 Módulo 04: Tótem de Auto Check-In SJL (Recepción)
 
 ## 1. Visión General
 El **Tótem de Auto Check-In** es una interfaz diseñada especialmente para tablets colocadas en atriles de madera en la entrada del local en **Jr. Akapana 1261, San Juan de Lurigancho (SJL)**.
@@ -11,7 +11,7 @@ Permite que las alumnas confirmen su llegada en menos de **3 segundos sin hacer 
 
 * **ReceptionKioskModal.tsx:** Modo pantalla completa de autoservicio para la tablet del atril. Teclado numérico táctil optimizado para digitar los 8 dígitos del DNI.
 * **ClientCheckInModal.tsx:** Modal de validación rápida de datos personales y alertas de salud previas a ingresar a sala.
-* **ReceptionDeskPanel.tsx:** Consola de recepción para el personal staff detrás del mostrador (control de aforo, alumnas en sala, venta de calcetines y cobros en efectivo/POS).
+* **AdminKioskTab.tsx (en AdminPanel):** Consola unificada de recepción y mostrador dentro del Panel Administrativo (control de aforo, asignación de camas Reformer 1-8, cobros express y quiosco).
 
 ---
 

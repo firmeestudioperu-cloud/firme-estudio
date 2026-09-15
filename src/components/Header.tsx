@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Menu, X, Calendar, Sparkles, MapPin, UserCheck, Zap, Award, Tablet, Activity, ShieldCheck, QrCode, Edit3 } from 'lucide-react';
-import { MainTabType, AuthUser } from '../types';
+import { MainTabType, AuthUser, isStaffRole } from '../types';
 
 interface HeaderProps {
   activeTab: MainTabType;
@@ -32,7 +32,7 @@ export const Header: React.FC<HeaderProps> = ({
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  const isStaff = currentUser?.role === 'owner_dev' || currentUser?.role === 'admin';
+  const isStaff = isStaffRole(currentUser?.role) && currentUser?.role !== 'instructor';
   const isOwnerDev = currentUser?.role === 'owner_dev';
 
   useEffect(() => {

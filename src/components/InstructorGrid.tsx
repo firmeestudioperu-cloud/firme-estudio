@@ -109,6 +109,8 @@ export const InstructorGrid: React.FC<InstructorGridProps> = ({ initialSubTab = 
                     <img
                       src={INSTRUCTOR_PHOTOS[teacher.id] || '/assets/instructor-valeria.jpg'}
                       alt={teacher.name}
+                      loading="lazy"
+                      decoding="async"
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out"
                     />
 
@@ -261,6 +263,8 @@ export const InstructorGrid: React.FC<InstructorGridProps> = ({ initialSubTab = 
                       <img
                         src="/assets/nuevo-en-pilates.jpg"
                         alt="Aprende Pilates Reformer"
+                        loading="lazy"
+                        decoding="async"
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out"
                       />
                       <div className="absolute top-3 left-3 w-10 h-10 rounded-lg bg-[#FAF8F5]/90 backdrop-blur-xs border border-[#E4DED4] flex items-center justify-center text-[#B5654A] shadow-xs">
@@ -302,6 +306,8 @@ export const InstructorGrid: React.FC<InstructorGridProps> = ({ initialSubTab = 
                       <img
                         src="/assets/nuevo-en-estudio.jpg"
                         alt="Instalaciones y bienvenida en FIRME STUDIO"
+                        loading="lazy"
+                        decoding="async"
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out"
                       />
                       <div className="absolute top-3 left-3 w-10 h-10 rounded-lg bg-[#FAF8F5]/90 backdrop-blur-xs border border-[#E4DED4] flex items-center justify-center text-[#B5654A] shadow-xs">

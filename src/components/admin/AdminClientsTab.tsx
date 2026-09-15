@@ -19,14 +19,24 @@ import {
   Check,
   Pencil,
   Download,
+  Target,
+  UserCheck,
 } from 'lucide-react';
-import { ClientProfile } from '../../types';
+import { ClientProfile, LeadRecord, LeadStatus } from '../../types';
+import { AdminLeadsTab } from './AdminLeadsTab';
 
 interface AdminClientsTabProps {
   clients: ClientProfile[];
   onAddClient: (newClient: Omit<ClientProfile, 'id'>) => void;
   onUpdateClient: (updatedClient: ClientProfile) => void;
   onDeleteClient?: (clientId: string) => void;
+  leads?: LeadRecord[];
+  onAddLead?: (lead: Omit<LeadRecord, 'id' | 'createdAt'>) => void;
+  onUpdateLead?: (lead: LeadRecord) => void;
+  onDeleteLead?: (leadId: string) => void;
+  onUpdateLeadStatus?: (id: string, status: LeadStatus) => void;
+  onConvertLeadToClient?: (lead: LeadRecord) => void;
+  initialSubView?: 'alumnas' | 'leads';
 }
 
 export const AdminClientsTab: React.FC<AdminClientsTabProps> = ({
@@ -34,11 +44,21 @@ export const AdminClientsTab: React.FC<AdminClientsTabProps> = ({
   onAddClient,
   onUpdateClient,
   onDeleteClient,
+  leads = [],
+  onAddLead,
+  onUpdateLead,
+  onDeleteLead,
+  onUpdateLeadStatus,
+  onConvertLeadToClient,
+  initialSubView,
 }) => {
+  const [activeView, setActiveView] = useState<'alumnas' | 'leads'>(initialSubView || 'alumnas');
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'todos' | 'activo' | 'en_riesgo' | 'inactivo'>('todos');
   const [selectedClient, setSelectedClient] = useState<ClientProfile | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
+
+  const newLeadsCount = leads.filter((l) => l.status === 'nuevo').length;
 
   // New client form state
   const [formData, setFormData] = useState({
@@ -245,12 +265,72 @@ export const AdminClientsTab: React.FC<AdminClientsTabProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Top Header */}
-      <div className="bg-[#FAF8F5] border border-[#E4DED4] rounded-2xl p-5 shadow-xs flex flex-col md:flex-row items-center justify-between gap-4">
-        <div>
-          <h2 className="font-fraunces text-xl font-medium text-[#1A1815]">
-            Directorio & CRM de Alumnos
-          </h2>
+      {/* Sub-tabs: Alumnas Registradas vs Prospectos & Leads */}
+      <div className="bg-[#FAF8F5] border border-[#E4DED4] p-1.5 rounded-2xl flex items-center gap-1.5 w-fit shadow-xs">
+        <button
+          type="button"
+          onClick={() => setActiveView('alumnas')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
+            activeView === 'alumnas'
+              ? 'bg-[#1A1815] text-white shadow-xs'
+              : 'text-[#6B655C] hover:text-[#1A1815] hover:bg-white/60'
+          }`}
+        >
+          <Users className="w-3.5 h-3.5" />
+          <span>Alumnas Registradas</span>
+          <span
+            className={`px-2 py-0.5 rounded-full text-[10px] font-mono ${
+              activeView === 'alumnas' ? 'bg-white/20 text-white' : 'bg-[#E4DED4] text-[#1A1815]'
+            }`}
+          >
+            {clients.length}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveView('leads')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
+            activeView === 'leads'
+              ? 'bg-[#1A1815] text-white shadow-xs'
+              : 'text-[#6B655C] hover:text-[#1A1815] hover:bg-white/60'
+          }`}
+        >
+          <Target className="w-3.5 h-3.5 text-rose-500" />
+          <span>Captación de Leads</span>
+          {newLeadsCount > 0 ? (
+            <span className="px-2 py-0.5 rounded-full text-[10px] bg-rose-500 text-white font-bold animate-pulse">
+              {newLeadsCount} nuevos
+            </span>
+          ) : (
+            <span
+              className={`px-2 py-0.5 rounded-full text-[10px] font-mono ${
+                activeView === 'leads' ? 'bg-white/20 text-white' : 'bg-[#E4DED4] text-[#1A1815]'
+              }`}
+            >
+              {leads.length}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {activeView === 'leads' ? (
+        <AdminLeadsTab
+          leads={leads}
+          onAddLead={onAddLead || (() => {})}
+          onUpdateLead={onUpdateLead}
+          onDeleteLead={onDeleteLead}
+          onUpdateLeadStatus={onUpdateLeadStatus || (() => {})}
+          onConvertLeadToClient={onConvertLeadToClient || (() => {})}
+        />
+      ) : (
+        <>
+          {/* Top Header */}
+          <div className="bg-[#FAF8F5] border border-[#E4DED4] rounded-2xl p-5 shadow-xs flex flex-col md:flex-row items-center justify-between gap-4">
+            <div>
+              <h2 className="font-fraunces text-xl font-medium text-[#1A1815]">
+                Directorio & CRM de Alumnos
+              </h2>
           <p className="text-xs text-[#6B655C] mt-0.5">
             Historial de membresías, créditos de clases restantes, notas biomecánicas y contacto.
           </p>
@@ -927,6 +1007,8 @@ export const AdminClientsTab: React.FC<AdminClientsTabProps> = ({
             </div>
           </form>
         </div>
+      )}
+        </>
       )}
     </div>
   );

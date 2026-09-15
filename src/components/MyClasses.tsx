@@ -19,6 +19,8 @@ import {
   CreditCard,
   ChevronRight,
   Download,
+  Maximize2,
+  X,
 } from 'lucide-react';
 
 interface MyClassesProps {
@@ -47,15 +49,29 @@ export const MyClasses: React.FC<MyClassesProps> = ({
   onOpenLevelModal,
 }) => {
   const [classToCancel, setClassToCancel] = useState<ClassSession | null>(null);
+  const [isQrEnlarged, setIsQrEnlarged] = useState(false);
+  const [isDownloadingPass, setIsDownloadingPass] = useState(false);
+
+  const studentDni = currentUser?.dni || '70112233';
+  const studentId = currentUser?.id || 'FIRME-MEM-8821';
+  const studentName = currentUser?.name || 'Valentino';
+
+  const currentOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://firmestudio.pe';
+  const checkInUrl = `${currentOrigin}/?action=checkin&dni=${encodeURIComponent(studentDni)}&memId=${encodeURIComponent(studentId)}&name=${encodeURIComponent(studentName)}`;
+  const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=360x360&color=1A1815&bgcolor=FFFFFF&margin=8&qzone=2&data=${encodeURIComponent(checkInUrl)}`;
 
   const handleDownloadPass = () => {
+    setIsDownloadingPass(true);
     const canvas = document.createElement('canvas');
     canvas.width = 900;
     canvas.height = 540;
     const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    if (!ctx) {
+      setIsDownloadingPass(false);
+      return;
+    }
 
-    // Background gradient luxury
+    // 1. Background gradient luxury
     const grad = ctx.createLinearGradient(0, 0, 900, 540);
     grad.addColorStop(0, '#1A1815');
     grad.addColorStop(0.5, '#2D2622');
@@ -68,7 +84,7 @@ export const MyClasses: React.FC<MyClassesProps> = ({
       ctx.fillRect(0, 0, 900, 540);
     }
 
-    // Border
+    // 2. Border
     ctx.strokeStyle = 'rgba(250, 248, 245, 0.2)';
     ctx.lineWidth = 3;
     if (ctx.roundRect) {
@@ -76,13 +92,13 @@ export const MyClasses: React.FC<MyClassesProps> = ({
       ctx.stroke();
     }
 
-    // Accent corner glow
+    // 3. Accent corner glow
     ctx.fillStyle = 'rgba(181, 101, 74, 0.15)';
     ctx.beginPath();
     ctx.arc(800, 80, 180, 0, Math.PI * 2);
     ctx.fill();
 
-    // Studio Header
+    // 4. Studio Header
     ctx.fillStyle = '#FAF8F5';
     ctx.font = 'bold 30px serif';
     ctx.fillText('FIRME STUDIO', 50, 65);
@@ -91,7 +107,7 @@ export const MyClasses: React.FC<MyClassesProps> = ({
     ctx.font = 'bold 13px sans-serif';
     ctx.fillText('PASE OFICIAL DE ALUMNO · LIMA-SJL', 50, 90);
 
-    // Active Badge
+    // 5. Active Badge
     ctx.fillStyle = 'rgba(46, 125, 70, 0.25)';
     if (ctx.roundRect) {
       ctx.roundRect(710, 40, 140, 32, 16);
@@ -101,7 +117,7 @@ export const MyClasses: React.FC<MyClassesProps> = ({
     ctx.font = 'bold 12px sans-serif';
     ctx.fillText('● SOCIO ACTIVO', 735, 61);
 
-    // Divider
+    // 6. Divider
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -109,23 +125,23 @@ export const MyClasses: React.FC<MyClassesProps> = ({
     ctx.lineTo(850, 115);
     ctx.stroke();
 
-    // Student Info
+    // 7. Student Info
     ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
     ctx.font = '12px sans-serif';
     ctx.fillText('ALUMNO / TITULAR', 50, 150);
 
     ctx.fillStyle = '#FFFFFF';
     ctx.font = 'bold 32px serif';
-    ctx.fillText(currentUser?.name || 'Sofía Montaner', 50, 190);
+    ctx.fillText(studentName, 50, 190);
 
     ctx.fillStyle = '#B5654A';
     ctx.font = '14px monospace';
-    ctx.fillText(`DNI: ${currentUser?.dni || '72418902'} · ID: FIRME-MEM-8821`, 50, 220);
+    ctx.fillText(`DNI: ${studentDni} · ID: ${studentId}`, 50, 220);
 
-    // Plan & Level Box
+    // 8. Plan & Level Box
     ctx.fillStyle = 'rgba(255, 255, 255, 0.06)';
     if (ctx.roundRect) {
-      ctx.roundRect(50, 250, 520, 130, 14);
+      ctx.roundRect(50, 250, 520, 135, 14);
       ctx.fill();
     }
 
@@ -136,61 +152,59 @@ export const MyClasses: React.FC<MyClassesProps> = ({
 
     ctx.fillStyle = '#FFFFFF';
     ctx.font = 'bold 16px sans-serif';
-    ctx.fillText(currentUser?.planName || 'Plan Semestral (48)', 70, 310);
+    ctx.fillText(currentUser?.planName || 'Plan Reformer Boutique', 70, 310);
     ctx.fillText(`Nv. ${currentUser?.level ?? 2} · ${currentUser?.exp ?? 1350} EXP`, 310, 310);
 
     ctx.fillStyle = '#4ade80';
     ctx.font = '12px sans-serif';
-    ctx.fillText(`${currentUser?.creditsLeft ?? 8} sesiones disponibles`, 70, 340);
+    ctx.fillText(`${currentUser?.credits !== undefined ? currentUser.credits : 8} sesiones disponibles`, 70, 340);
     ctx.fillStyle = '#B5654A';
     ctx.fillText(currentUser?.levelTitle || 'Nivel II · Enfoque & Constancia', 310, 340);
 
-    // Footer Sede
+    // 9. Footer Sede
     ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
     ctx.font = '13px sans-serif';
-    ctx.fillText('Sede Oficial: Jr. Akapana 1261, Lima - SJL · www.firmestudio.pe', 50, 480);
+    ctx.fillText('Sede Oficial: Jr. Akapana 1261, Lima - SJL · Escaneo directo en recepción', 50, 480);
 
-    // QR Code White Background
+    // 10. QR Code White Background
     ctx.fillStyle = '#FFFFFF';
     if (ctx.roundRect) {
-      ctx.roundRect(640, 200, 210, 210, 16);
+      ctx.roundRect(640, 190, 210, 225, 16);
       ctx.fill();
     } else {
-      ctx.fillRect(640, 200, 210, 210);
+      ctx.fillRect(640, 190, 210, 225);
     }
 
-    // High Contrast QR Graphics
-    ctx.fillStyle = '#1A1815';
-    // Corners
-    ctx.fillRect(660, 220, 45, 45);
-    ctx.clearRect(670, 230, 25, 25);
-    ctx.fillRect(677, 237, 11, 11);
+    const triggerDownload = () => {
+      ctx.fillStyle = '#6B655C';
+      ctx.font = 'bold 9px monospace';
+      ctx.fillText('ESCANEAR EN RECEPCIÓN', 665, 395);
 
-    ctx.fillRect(785, 220, 45, 45);
-    ctx.clearRect(795, 230, 25, 25);
-    ctx.fillRect(802, 237, 11, 11);
+      const dataUrl = canvas.toDataURL('image/png');
+      const link = document.createElement('a');
+      link.download = `FIRME-PASS-${studentName.replace(/\s+/g, '-')}.png`;
+      link.href = dataUrl;
+      link.click();
+      setIsDownloadingPass(false);
+    };
 
-    ctx.fillRect(660, 345, 45, 45);
-    ctx.clearRect(670, 355, 25, 25);
-    ctx.fillRect(677, 362, 11, 11);
+    // Draw real scannable QR onto canvas
+    const qrImg = new Image();
+    qrImg.crossOrigin = 'anonymous';
+    qrImg.src = qrImageUrl;
 
-    // Data blocks
-    ctx.fillRect(730, 230, 20, 20);
-    ctx.fillRect(730, 290, 30, 30);
-    ctx.fillRect(780, 290, 20, 20);
-    ctx.fillRect(730, 350, 30, 20);
-    ctx.fillRect(780, 350, 20, 30);
+    qrImg.onload = () => {
+      ctx.drawImage(qrImg, 655, 202, 180, 180);
+      triggerDownload();
+    };
 
-    ctx.fillStyle = '#6B655C';
-    ctx.font = 'bold 9px monospace';
-    ctx.fillText('ACCESO TÓTEM RECEPCIÓN', 675, 400);
-
-    // Export and download
-    const dataUrl = canvas.toDataURL('image/png');
-    const link = document.createElement('a');
-    link.download = `FIRME-PASS-${(currentUser?.name || 'Alumno').replace(/\s+/g, '-')}.png`;
-    link.href = dataUrl;
-    link.click();
+    qrImg.onerror = () => {
+      ctx.fillStyle = '#1A1815';
+      ctx.fillRect(665, 210, 45, 45);
+      ctx.fillRect(775, 210, 45, 45);
+      ctx.fillRect(665, 320, 45, 45);
+      triggerDownload();
+    };
   };
 
   const getDayFullLabel = (dayKey: string) => {
@@ -318,10 +332,10 @@ export const MyClasses: React.FC<MyClassesProps> = ({
                   <div>
                     <span className="text-[10px] text-white/50 uppercase tracking-wider block">Alumno / Titular</span>
                     <h3 className="font-fraunces text-xl sm:text-2xl text-white font-medium">
-                      {currentUser?.name || 'Sofía Montaner'}
+                      {studentName}
                     </h3>
                     <span className="text-xs text-[#B5654A] font-mono">
-                      DNI: {currentUser?.dni || '72418902'} · ID: FIRME-MEM-8821
+                      DNI: {studentDni} · ID: {studentId}
                     </span>
                   </div>
 
@@ -329,7 +343,7 @@ export const MyClasses: React.FC<MyClassesProps> = ({
                     <div className="bg-white/5 border border-white/10 rounded-xl p-2.5">
                       <span className="text-[10px] text-white/60 block">Plan Contratado</span>
                       <span className="text-xs font-semibold text-white truncate block">
-                        {currentUser?.planName || 'Plan Semestral (48)'}
+                        {currentUser?.planName || 'Plan Reformer Boutique'}
                       </span>
                     </div>
 
@@ -342,44 +356,35 @@ export const MyClasses: React.FC<MyClassesProps> = ({
                   </div>
                 </div>
 
-                {/* Right Scannable QR Code (4 cols) */}
+                {/* Right Scannable QR Code (4 cols) - 100% Real & Scannable */}
                 <div className="sm:col-span-4 flex flex-col items-center justify-center p-3 bg-white rounded-xl shadow-inner text-center">
-                  {/* SVG High-Contrast QR Code */}
-                  <svg className="w-24 h-24" viewBox="0 0 100 100" fill="#1A1815">
-                    {/* Top-left marker */}
-                    <rect x="10" y="10" width="26" height="26" rx="4" />
-                    <rect x="15" y="15" width="16" height="16" fill="white" rx="2" />
-                    <rect x="19" y="19" width="8" height="8" rx="1" />
-                    {/* Top-right marker */}
-                    <rect x="64" y="10" width="26" height="26" rx="4" />
-                    <rect x="69" y="15" width="16" height="16" fill="white" rx="2" />
-                    <rect x="73" y="19" width="8" height="8" rx="1" />
-                    {/* Bottom-left marker */}
-                    <rect x="10" y="64" width="26" height="26" rx="4" />
-                    <rect x="15" y="69" width="16" height="16" fill="white" rx="2" />
-                    <rect x="19" y="73" width="8" height="8" rx="1" />
-                    {/* Data dots */}
-                    <rect x="42" y="14" width="6" height="6" rx="1" />
-                    <rect x="52" y="14" width="6" height="6" rx="1" />
-                    <rect x="42" y="24" width="6" height="6" rx="1" />
-                    <rect x="52" y="30" width="6" height="6" rx="1" />
-                    <rect x="14" y="44" width="6" height="6" rx="1" />
-                    <rect x="24" y="44" width="6" height="6" rx="1" />
-                    <rect x="34" y="44" width="6" height="6" rx="1" />
-                    <rect x="44" y="44" width="12" height="12" rx="2" />
-                    <rect x="60" y="44" width="6" height="6" rx="1" />
-                    <rect x="70" y="44" width="6" height="6" rx="1" />
-                    <rect x="80" y="44" width="6" height="6" rx="1" />
-                    <rect x="44" y="64" width="6" height="6" rx="1" />
-                    <rect x="54" y="64" width="6" height="6" rx="1" />
-                    <rect x="64" y="64" width="6" height="6" rx="1" />
-                    <rect x="74" y="64" width="6" height="6" rx="1" />
-                    <rect x="84" y="64" width="6" height="6" rx="1" />
-                    <rect x="44" y="76" width="6" height="6" rx="1" />
-                    <rect x="58" y="76" width="8" height="8" rx="1" />
-                    <rect x="76" y="76" width="8" height="8" rx="1" />
-                  </svg>
-                  <span className="text-[9px] font-mono text-[#6B655C] mt-1 font-bold">ESCANEAR EN RECEPCIÓN</span>
+                  <button
+                    type="button"
+                    onClick={() => setIsQrEnlarged(true)}
+                    title="Click para ampliar QR a pantalla completa para escaneo rápido"
+                    className="group relative cursor-pointer flex flex-col items-center"
+                  >
+                    <div className="w-24 h-24 sm:w-28 sm:h-28 relative flex items-center justify-center bg-white rounded-lg p-1 border border-[#E4DED4]/80 shadow-xs group-hover:shadow-md transition-all group-hover:scale-105">
+                      <img
+                        src={qrImageUrl}
+                        alt={`Código QR FIRME PASS de ${studentName}`}
+                        className="w-full h-full object-contain"
+                        loading="eager"
+                      />
+                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 rounded-lg transition-colors flex items-center justify-center">
+                        <span className="opacity-0 group-hover:opacity-100 bg-[#1A1815]/90 text-white text-[9px] font-semibold px-2 py-0.5 rounded shadow-sm transition-opacity flex items-center gap-1">
+                          <Maximize2 className="w-2.5 h-2.5" /> Ampliar
+                        </span>
+                      </div>
+                    </div>
+                    <span className="text-[9px] font-mono text-[#6B655C] mt-1.5 font-bold tracking-tight">
+                      ESCANEAR EN RECEPCIÓN
+                    </span>
+                    <span className="text-[8px] text-emerald-700 font-bold mt-0.5 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      QR ACTIVO · CHECK-IN EXPRESS
+                    </span>
+                  </button>
                 </div>
               </div>
             </div>
@@ -394,11 +399,12 @@ export const MyClasses: React.FC<MyClassesProps> = ({
                 <button
                   type="button"
                   onClick={handleDownloadPass}
-                  className="bg-white/10 hover:bg-white/20 text-white text-[11px] font-semibold px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs border border-white/15"
+                  disabled={isDownloadingPass}
+                  className="bg-white/10 hover:bg-white/20 text-white text-[11px] font-semibold px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs border border-white/15 disabled:opacity-50"
                   title="Descargar carnet oficial FIRME PASS en alta definición para guardar en tu móvil"
                 >
                   <Download className="w-3.5 h-3.5 text-[#B5654A]" />
-                  <span>Descargar Pase (PNG)</span>
+                  <span>{isDownloadingPass ? 'Generando...' : 'Descargar Pase (PNG)'}</span>
                 </button>
 
                 {onOpenCheckInModal && (
@@ -769,6 +775,79 @@ export const MyClasses: React.FC<MyClassesProps> = ({
                 >
                   Sí, cancelar reserva
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal QR Ampliado en Pantalla Completa (Escaneo Rápido para Tótem / Recepción) */}
+        {isQrEnlarged && (
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#1A1815]/80 backdrop-blur-xs animate-in fade-in duration-200"
+            onClick={() => setIsQrEnlarged(false)}
+          >
+            <div
+              className="bg-white rounded-3xl border border-[#E4DED4] p-6 sm:p-8 max-w-sm w-full shadow-2xl text-center relative overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                onClick={() => setIsQrEnlarged(false)}
+                className="absolute top-4 right-4 p-2 rounded-full text-[#6B655C] hover:text-[#1A1815] hover:bg-[#F1ECE5] transition-colors cursor-pointer"
+                aria-label="Cerrar QR ampliado"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              <div className="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider mb-3">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                FIRME PASS · QR OFICIAL ACTIVO
+              </div>
+
+              <h3 className="font-fraunces text-2xl text-[#1A1815] font-semibold mb-1">
+                {studentName}
+              </h3>
+              <p className="text-xs font-mono text-[#B5654A] font-bold mb-4">
+                DNI: {studentDni} · ID: {studentId}
+              </p>
+
+              {/* Large high contrast scannable QR */}
+              <div className="bg-[#FAF8F5] p-4 rounded-2xl border-2 border-[#1A1815] inline-block shadow-inner mb-4">
+                <img
+                  src={qrImageUrl}
+                  alt={`QR Pase Oficial de ${studentName}`}
+                  className="w-56 h-56 sm:w-64 sm:h-64 object-contain mx-auto"
+                />
+              </div>
+
+              <p className="text-xs text-[#6B655C] leading-relaxed mb-4">
+                Acerca este código a la <strong>cámara del tótem</strong> o muéstralo en recepción en <strong>Jr. Akapana 1261</strong> para registrar tu asistencia y ver tu cama Reformer asignada.
+              </p>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={handleDownloadPass}
+                  disabled={isDownloadingPass}
+                  className="flex-1 bg-[#1A1815] hover:bg-[#2A2421] text-white text-xs font-semibold py-2.5 px-4 rounded-xl transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-xs disabled:opacity-50"
+                >
+                  <Download className="w-4 h-4 text-[#B5654A]" />
+                  <span>{isDownloadingPass ? 'Generando...' : 'Descargar Pase'}</span>
+                </button>
+                {onOpenCheckInModal && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsQrEnlarged(false);
+                      onOpenCheckInModal();
+                    }}
+                    className="bg-[#B5654A] hover:bg-[#9A5340] text-white text-xs font-semibold py-2.5 px-4 rounded-xl transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+                  >
+                    <QrCode className="w-4 h-4" />
+                    <span>Autocheck-in</span>
+                  </button>
+                )}
               </div>
             </div>
           </div>

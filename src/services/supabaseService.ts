@@ -18,15 +18,17 @@ import {
 
 // Helper para convertir nombres snake_case de Postgres a camelCase de TypeScript
 export function mapDbClassToSession(row: any): ClassSession {
+  const formattedTime = row.time || (row.start_time ? row.start_time.slice(0, 5) : '08:00');
+  const formattedDuration = row.duration || (row.duration_min ? `${row.duration_min} min` : '50 min');
   return {
     id: row.id,
     day: row.day,
-    time: row.time,
+    time: formattedTime,
     name: row.name,
-    instructor: row.instructor,
-    level: row.level,
-    classType: row.class_type,
-    duration: row.duration || '50 min',
+    instructor: row.instructor || row.instructor_name || 'Instructora FIRME',
+    level: row.level || 'Principiante',
+    classType: row.class_type || 'Reformer',
+    duration: formattedDuration,
     totalSpots: row.total_spots ?? 8,
     occupiedSpots: row.occupied_spots ?? 0,
     focus: row.focus || '',
@@ -124,7 +126,8 @@ export const supabaseService = {
       return MOCK_CLASSES;
     }
     try {
-      const { data, error } = await supabase.from('classes').select('*').order('time', { ascending: true });
+      // Intentar ordenar por start_time o created_at
+      const { data, error } = await supabase.from('classes').select('*').order('start_time', { ascending: true });
       if (error || !data || data.length === 0) {
         return MOCK_CLASSES;
       }
@@ -479,8 +482,8 @@ export const supabaseService = {
     const staffMatch = findStaffByCredential(identifier);
     if (staffMatch) {
       const storedMasterPass =
-        (typeof window !== 'undefined' && localStorage.getItem('firme_admin_password')) || 'firme2026';
-      const staffPass = staffMatch.defaultPassword || 'firme2026';
+        (typeof window !== 'undefined' && localStorage.getItem('firme_admin_password')) || '30092023';
+      const staffPass = staffMatch.defaultPassword || '30092023';
       if (password.trim() === staffPass || password.trim() === storedMasterPass) {
         const staffUser: AuthUser = {
           id: staffMatch.id,

@@ -1,165 +1,215 @@
 import { Router, Request, Response } from 'express';
 import { store } from '../data/store';
-import { BookingRecord } from '../../src/types';
+import { asyncHandler } from '../middleware/asyncHandler';
 
 const router = Router();
 
-// GET /api/bookings - List bookings (optionally filter by classId or clientEmail)
-router.get('/', (req: Request, res: Response) => {
-  const { classId, clientEmail, status } = req.query;
-  let bookings = store.getBookings();
+// GET /api/bookings - List bookings (optionally filter by classId or clientEmail, supports page & limit)
+router.get(
+  '/',
+  asyncHandler(async (req: Request, res: Response) => {
+    const { classId, clientEmail, status, page, limit } = req.query;
 
-  if (classId) {
-    bookings = bookings.filter((b) => b.classId === classId);
-  }
-  if (clientEmail) {
-    bookings = bookings.filter((b) => b.clientEmail.toLowerCase() === String(clientEmail).toLowerCase());
-  }
-  if (status) {
-    bookings = bookings.filter((b) => b.status === status);
-  }
+    if (page !== undefined || limit !== undefined) {
+      const pageNum = page ? Math.max(1, parseInt(String(page), 10) || 1) : 1;
+      const limitNum = limit ? Math.max(1, parseInt(String(limit), 10) || 50) : 50;
+      const result = store.getBookingsPaginated({
+        classId: classId ? String(classId) : undefined,
+        clientEmail: clientEmail ? String(clientEmail) : undefined,
+        status: status ? String(status) : undefined,
+        page: pageNum,
+        limit: limitNum,
+      });
 
-  res.json({ success: true, data: bookings, count: bookings.length });
-});
-
-// POST /api/bookings - Make a new reservation
-router.post('/', (req: Request, res: Response) => {
-  const { classId, className, classTime, classDay, instructor, clientName, clientEmail, clientPhone } = req.body;
-
-  if (!classId || !clientName || !clientEmail) {
-    return res.status(400).json({ success: false, error: 'Faltan campos obligatorios para la reserva' });
-  }
-
-  // Check spot availability in the class
-  const classSession = store.getClassById(classId);
-  if (classSession && classSession.occupiedSpots >= classSession.totalSpots) {
-    return res.status(400).json({
-      success: false,
-      error: 'La clase ya no tiene cupos disponibles (capacidad máxima: ' + classSession.totalSpots + ')',
-    });
-  }
-
-  const now = new Date();
-  const dateStr = now.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' });
-  const timeStr = now.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' });
-
-  const newBooking: BookingRecord = {
-    id: `b-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-    classId,
-    className: className || classSession?.name || 'Clase Reformer',
-    classTime: classTime || classSession?.time || '08:00',
-    classDay: classDay || classSession?.day || 'lun',
-    instructor: instructor || classSession?.instructor || 'Instructor FIRME',
-    clientName,
-    clientEmail,
-    clientPhone: clientPhone || '+51 900 000 000',
-    status: 'confirmada',
-    bookedAt: `${dateStr} ${timeStr}`,
-  };
-
-  const created = store.addBooking(newBooking);
-
-  // If client exists in CRM, update attended or check profile
-  const existingClient = store.getClients().find((c) => c.email.toLowerCase() === clientEmail.toLowerCase());
-  if (existingClient) {
-    if (existingClient.creditsLeft > 0 && existingClient.planType === 'pack') {
-      store.updateClient(existingClient.id, { creditsLeft: existingClient.creditsLeft - 1 });
+      return res.json({
+        success: true,
+        data: result.items,
+        count: result.items.length,
+        pagination: {
+          page: result.page,
+          limit: result.limit,
+          total: result.total,
+          totalPages: result.totalPages,
+        },
+      });
     }
-  }
 
-  res.status(201).json({
-    success: true,
-    data: created,
-    message: 'Reserva confirmada exitosamente. ¡Te esperamos en FIRME STUDIO!',
-  });
-});
+    let bookings = store.getBookings();
 
-// PATCH /api/bookings/:id/status - Update booking status (confirmada, asistio, cancelada, lista_espera)
-router.patch('/:id/status', (req: Request, res: Response) => {
-  const { status } = req.body;
-  if (!status) {
-    return res.status(400).json({ success: false, error: 'El estado es requerido' });
-  }
+    if (classId) {
+      bookings = bookings.filter((b) => b.classId === classId);
+    }
+    if (clientEmail) {
+      bookings = bookings.filter((b) => b.clientEmail.toLowerCase() === String(clientEmail).toLowerCase());
+    }
+    if (status) {
+      bookings = bookings.filter((b) => b.status === status);
+    }
 
-  const updated = store.updateBookingStatus(req.params.id, status);
-  if (!updated) {
-    return res.status(404).json({ success: false, error: 'Reserva no encontrada' });
-  }
+    res.json({ success: true, data: bookings, count: bookings.length });
+  })
+);
 
-  res.json({ success: true, data: updated, message: `Estado actualizado a ${status}` });
-});
+// POST /api/bookings - Make a new reservation with atomic capacity & duplicate check
+router.post(
+  '/',
+  asyncHandler(async (req: Request, res: Response) => {
+    const { classId, clientName, clientEmail, clientPhone, clientDni, bedNumber, medicalAlert } = req.body;
 
-// POST /api/bookings/:id/check-in - Check-in Express at reception or by instructor
-router.post('/:id/check-in', (req: Request, res: Response) => {
-  const { bedNumber } = req.body;
-  const updated = store.checkInBooking(req.params.id, bedNumber !== undefined ? Number(bedNumber) : undefined);
-  if (!updated) {
-    return res.status(404).json({ success: false, error: 'Reserva no encontrada para check-in' });
-  }
-  res.json({
-    success: true,
-    data: updated,
-    message: `¡Check-in confirmado para ${updated.clientName}! Cama asignada: Reformer #${updated.bedNumber || 'Sin asignar'}.`,
-  });
-});
+    if (!classId || typeof classId !== 'string' || !classId.trim()) {
+      return res.status(400).json({ success: false, error: 'Identificador de clase requerido' });
+    }
+    if (!clientName || typeof clientName !== 'string' || !clientName.trim()) {
+      return res.status(400).json({ success: false, error: 'Nombre de la alumna o cliente requerido' });
+    }
+    if (!clientEmail || typeof clientEmail !== 'string' || !clientEmail.trim()) {
+      return res.status(400).json({ success: false, error: 'Correo electrónico requerido' });
+    }
+
+    // Optional bed number parsing
+    let parsedBedNumber: number | undefined = undefined;
+    if (bedNumber !== undefined && bedNumber !== null && bedNumber !== '') {
+      const num = Number(bedNumber);
+      if (!Number.isInteger(num) || num < 1 || num > 8) {
+        return res.status(400).json({ success: false, error: 'El número de cama debe ser un entero entre 1 y 8' });
+      }
+      parsedBedNumber = num;
+    }
+
+    const result = store.reserveSpot({
+      classId: classId.trim(),
+      clientName: clientName.trim(),
+      clientEmail: clientEmail.trim(),
+      clientPhone: clientPhone ? String(clientPhone).trim() : undefined,
+      clientDni: clientDni ? String(clientDni).trim() : undefined,
+      bedNumber: parsedBedNumber,
+      medicalAlert: medicalAlert ? String(medicalAlert).trim() : undefined,
+    });
+
+    if (result.success === false) {
+      return res.status(400).json({ success: false, error: result.error });
+    }
+
+    res.status(201).json({
+      success: true,
+      data: result.booking,
+      message: 'Reserva confirmada exitosamente. ¡Te esperamos en FIRME STUDIO!',
+    });
+  })
+);
+
+// PATCH /api/bookings/:id/status - Update booking status
+router.patch(
+  '/:id/status',
+  asyncHandler(async (req: Request, res: Response) => {
+    const { status } = req.body;
+    const validStatuses = ['confirmada', 'asistio', 'cancelada', 'lista_espera'];
+
+    if (!status || !validStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        error: `Estado inválido. Debe ser uno de: ${validStatuses.join(', ')}`,
+      });
+    }
+
+    const updated = store.updateBookingStatus(req.params.id, status);
+    if (!updated) {
+      return res.status(404).json({ success: false, error: 'Reserva no encontrada' });
+    }
+
+    res.json({ success: true, data: updated, message: `Estado actualizado a ${status}` });
+  })
+);
+
+// POST /api/bookings/:id/check-in - Check-in Express at reception or kiosk
+router.post(
+  '/:id/check-in',
+  asyncHandler(async (req: Request, res: Response) => {
+    const { bedNumber } = req.body;
+    let parsedBed: number | undefined = undefined;
+
+    if (bedNumber !== undefined && bedNumber !== null && bedNumber !== '') {
+      const num = Number(bedNumber);
+      if (!Number.isInteger(num) || num < 1 || num > 8) {
+        return res.status(400).json({ success: false, error: 'El número de cama debe ser un entero entre 1 y 8' });
+      }
+      parsedBed = num;
+    }
+
+    const result = store.checkInBooking(req.params.id, parsedBed);
+    if (result.success === false) {
+      const status = result.error.includes('no encontrada') ? 404 : 400;
+      return res.status(status).json({ success: false, error: result.error });
+    }
+
+    res.json({
+      success: true,
+      data: result.booking,
+      message: `¡Check-in confirmado para ${result.booking.clientName}! Cama asignada: Reformer #${result.booking.bedNumber || 'Sin asignar'}.`,
+    });
+  })
+);
 
 // POST /api/bookings/:id/assign-bed - Assign or change Reformer bed number (1-8)
-router.post('/:id/assign-bed', (req: Request, res: Response) => {
-  const { bedNumber } = req.body;
-  if (bedNumber === undefined || Number(bedNumber) < 1 || Number(bedNumber) > 8) {
-    return res.status(400).json({ success: false, error: 'El número de cama debe estar entre 1 y 8' });
-  }
+router.post(
+  '/:id/assign-bed',
+  asyncHandler(async (req: Request, res: Response) => {
+    const { bedNumber } = req.body;
 
-  const updated = store.assignBed(req.params.id, Number(bedNumber));
-  if (!updated) {
-    return res.status(404).json({ success: false, error: 'Reserva no encontrada' });
-  }
+    if (bedNumber === undefined || bedNumber === null || bedNumber === '') {
+      return res.status(400).json({ success: false, error: 'El número de cama es requerido' });
+    }
 
-  res.json({
-    success: true,
-    data: updated,
-    message: `Cama Reformer #${bedNumber} asignada correctamente a ${updated.clientName}`,
-  });
-});
+    const num = Number(bedNumber);
+    if (!Number.isInteger(num) || num < 1 || num > 8) {
+      return res.status(400).json({ success: false, error: 'El número de cama debe ser un entero entre 1 y 8' });
+    }
 
-// POST /api/bookings/:id/cancel-with-refund - Studio fair cancellation with credit refund and waitlist notification trigger
-router.post('/:id/cancel-with-refund', (req: Request, res: Response) => {
-  const booking = store.getBookings().find((b) => b.id === req.params.id);
-  if (!booking) {
-    return res.status(404).json({ success: false, error: 'Reserva no encontrada' });
-  }
+    const result = store.assignBed(req.params.id, num);
+    if (result.success === false) {
+      const status = result.error.includes('no encontrada') ? 404 : 400;
+      return res.status(status).json({ success: false, error: result.error });
+    }
 
-  // Update booking to cancelada
-  const updated = store.updateBookingStatus(req.params.id, 'cancelada');
+    res.json({
+      success: true,
+      data: result.booking,
+      message: `Cama Reformer #${num} asignada correctamente a ${result.booking.clientName}`,
+    });
+  })
+);
 
-  // Find if client has pack and refund credit
-  const client = store.getClients().find((c) => c.email.toLowerCase() === booking.clientEmail.toLowerCase());
-  let refunded = false;
-  if (client && client.planType === 'pack') {
-    store.updateClient(client.id, { creditsLeft: client.creditsLeft + 1 });
-    refunded = true;
-  }
+// POST /api/bookings/:id/cancel-with-refund - Studio fair cancellation with credit refund
+router.post(
+  '/:id/cancel-with-refund',
+  asyncHandler(async (req: Request, res: Response) => {
+    const result = store.cancelBookingWithRefund(req.params.id);
+    if (!result.success || !result.booking) {
+      return res.status(404).json({ success: false, error: result.error || 'Reserva no encontrada' });
+    }
 
-  // Check if waitlist exists for this class
-  const waitlistCandidates = store.getLeads().filter((l) => l.status === 'nuevo' || l.status === 'contactado' || l.status === 'prueba_agendada');
-  const nextCandidate = waitlistCandidates.length > 0 ? waitlistCandidates[0] : null;
-
-  res.json({
-    success: true,
-    data: updated,
-    refunded,
-    nextWaitlistCandidate: nextCandidate,
-    message: `Reserva de ${booking.clientName} cancelada. ${refunded ? '1 crédito devuelto al pack de la alumna.' : ''} Cupo liberado en sala.`,
-  });
-});
+    res.json({
+      success: true,
+      data: result.booking,
+      refunded: result.refunded ?? false,
+      nextWaitlistCandidate: result.nextWaitlistCandidate ?? null,
+      message: `Reserva de ${result.booking.clientName} cancelada. ${
+        result.refunded ? '1 crédito devuelto al pack de la alumna.' : ''
+      } Cupo liberado en sala.`,
+    });
+  })
+);
 
 // DELETE /api/bookings/:id - Cancel/delete booking
-router.delete('/:id', (req: Request, res: Response) => {
-  const deleted = store.deleteBooking(req.params.id);
-  if (!deleted) {
-    return res.status(404).json({ success: false, error: 'Reserva no encontrada' });
-  }
-  res.json({ success: true, message: 'Reserva eliminada con éxito' });
-});
+router.delete(
+  '/:id',
+  asyncHandler(async (req: Request, res: Response) => {
+    const deleted = store.deleteBooking(req.params.id);
+    if (!deleted) {
+      return res.status(404).json({ success: false, error: 'Reserva no encontrada para eliminar' });
+    }
+    res.json({ success: true, message: 'Reserva eliminada con éxito' });
+  })
+);
 
 export default router;

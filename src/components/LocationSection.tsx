@@ -104,6 +104,8 @@ export const LocationSection: React.FC = () => {
               <img
                 src="/assets/hero-studio.jpg"
                 alt="Instalaciones FIRME STUDIO San Juan de Lurigancho"
+                loading="lazy"
+                decoding="async"
                 className="w-full h-full object-cover"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-[#1A1815]/90 via-[#1A1815]/40 to-transparent" />
