@@ -139,6 +139,7 @@ export function mapDbClientToProfile(row: any): ClientProfile {
     id: row.id,
     name: row.name,
     dni: row.dni,
+    alternateDni: row.alternate_dni || undefined,
     phone: row.phone,
     email: row.email || '',
     currentPlan: row.current_plan || 'Pack 8 Sesiones',
@@ -1465,15 +1466,38 @@ export const supabaseService = {
       if (profile.email) clientPayload.email = profile.email.trim().toLowerCase();
       if (profile.dni) clientPayload.dni = profile.dni.trim();
 
-      const { data: clientRow, error: clientErr } = await supabase
+      let clientRow: any = null;
+      // Intento 1: Guardar con campos enriquecidos (segundo DNI, nivel, avatar)
+      const enrichedPayload = {
+        ...clientPayload,
+        ...(profile.alternateDni ? { alternate_dni: profile.alternateDni.trim() } : {}),
+        ...(profile.experienceLevel ? { experience_level: profile.experienceLevel } : {}),
+        ...(profile.avatar ? { avatar_url: profile.avatar.trim() } : {}),
+      };
+
+      const { data: c1, error: err1 } = await supabase
         .from('clients')
-        .upsert(clientPayload, { onConflict: 'dni' })
+        .upsert(enrichedPayload, { onConflict: 'dni' })
         .select('id')
         .single();
 
-      if (clientErr) {
-        console.warn('Error guardando perfil de cliente en Supabase:', clientErr.message);
+      if (err1 && err1.message && err1.message.includes('schema cache')) {
+        // Fallback si la base de datos aún no tiene las columnas opcionales
+        const { data: c2, error: err2 } = await supabase
+          .from('clients')
+          .upsert(clientPayload, { onConflict: 'dni' })
+          .select('id')
+          .single();
+        if (err2) {
+          console.warn('Error guardando perfil de cliente en Supabase:', err2.message);
+          return false;
+        }
+        clientRow = c2;
+      } else if (err1) {
+        console.warn('Error guardando perfil de cliente en Supabase:', err1.message);
         return false;
+      } else {
+        clientRow = c1;
       }
 
       // Si tiene plan asignado, registrar o actualizar en client_plans
