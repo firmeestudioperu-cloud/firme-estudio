@@ -27,6 +27,7 @@ interface BookingModalProps {
   ) => void;
   currentUser?: AuthUser | null;
   onOpenGoogleAuth?: () => void;
+  onViewMyClasses?: () => void;
 }
 
 const HEALTH_CONDITIONS_OPTIONS = [
@@ -53,6 +54,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   onConfirmBooking,
   currentUser,
   onOpenGoogleAuth,
+  onViewMyClasses,
 }) => {
   const [userName, setUserName] = useState('');
   const [userEmail, setUserEmail] = useState('');
@@ -709,8 +711,11 @@ export const BookingModal: React.FC<BookingModalProps> = ({
             <div className="pt-2">
               <button
                 type="button"
-                onClick={onClose}
-                className="w-full bg-[#1A1815] hover:bg-black text-[#FAF8F5] py-2.5 px-4 rounded-md text-xs font-medium transition-colors cursor-pointer"
+                onClick={() => {
+                  onClose();
+                  onViewMyClasses?.();
+                }}
+                className="w-full bg-[#1A1815] hover:bg-black text-[#FAF8F5] py-2.5 px-4 rounded-md text-xs font-medium transition-colors cursor-pointer shadow-xs"
               >
                 Cerrar y ver en Mis Clases
               </button>

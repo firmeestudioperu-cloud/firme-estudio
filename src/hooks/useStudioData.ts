@@ -162,8 +162,15 @@ export function useStudioData(options?: UseStudioDataOptions) {
         }
       });
       supabaseService.getBookings().then((bks) => {
-        if (isMounted && bks && bks.length > 0) {
-          setBookingsList(bks);
+        if (isMounted && bks) {
+          setBookingsList((prev) => {
+            if (!bks.length) return prev;
+            const cloudIds = new Set(bks.map((b) => b.id));
+            const uniqueLocal = prev.filter(
+              (p) => !cloudIds.has(p.id) && !bks.some((s) => s.classId === p.classId && s.clientDni === p.clientDni && s.status === p.status)
+            );
+            return [...bks, ...uniqueLocal];
+          });
         }
       });
       supabaseService.getClients().then((clients) => {

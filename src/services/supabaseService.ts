@@ -349,55 +349,130 @@ export const supabaseService = {
     }
   },
 
-  async createBooking(booking: Omit<BookingRecord, 'id' | 'bookedAt' | 'status'> & { id?: string; scheduledDate?: string }): Promise<BookingRecord | null> {
+  async createBooking(booking: Omit<BookingRecord, 'id' | 'bookedAt' | 'status'> & { id?: string; scheduledDate?: string; status?: BookingRecord['status'] }): Promise<BookingRecord | null> {
     if (!isSupabaseConfigured() || !supabase) {
       const fallback: BookingRecord = {
         ...booking,
         id: `b-${Date.now()}`,
-        status: 'confirmada',
+        status: booking.status || 'confirmada',
         bookedAt: new Date().toLocaleDateString('es-PE'),
+        isWaitlist: booking.isWaitlist || false,
       };
       return fallback;
     }
     try {
       let clientId: string | undefined = undefined;
-      if (booking.clientDni) {
-        const { data: clientRow } = await supabase
-          .from('clients')
-          .select('id')
-          .eq('dni', booking.clientDni.trim())
-          .maybeSingle();
+      const cleanDni = booking.clientDni?.trim();
+      const cleanEmail = booking.clientEmail?.trim().toLowerCase();
+
+      // 1. Vinculación inteligente con tabla clients (por DNI, alternate_dni o Email)
+      if (cleanDni || cleanEmail) {
+        let query = supabase.from('clients').select('id, dni, email');
+        if (cleanDni && cleanEmail) {
+          query = query.or(`dni.eq.${cleanDni},alternate_dni.eq.${cleanDni},email.ilike.${cleanEmail}`);
+        } else if (cleanDni) {
+          query = query.or(`dni.eq.${cleanDni},alternate_dni.eq.${cleanDni}`);
+        } else if (cleanEmail) {
+          query = query.ilike('email', cleanEmail);
+        }
+
+        const { data: clientRow } = await query.maybeSingle();
         if (clientRow?.id) {
           clientId = clientRow.id;
-        } else if (booking.clientName) {
-          // Auto-registrar alumna si no existe para que quede vinculada en la base de datos
-          const { data: createdClient } = await supabase
-            .from('clients')
-            .insert({
-              name: booking.clientName,
-              dni: booking.clientDni.trim(),
-              email: booking.clientEmail?.trim() || null,
-              phone: booking.clientPhone?.trim() || '+51 900 000 000',
-              status: 'activo',
-              registration_method: 'manual_web',
-              medical_notes: booking.medicalAlert || null,
-            })
-            .select('id')
-            .maybeSingle();
-          if (createdClient?.id) {
-            clientId = createdClient.id;
+          // Si el cliente fue hallado por email pero no tenía este DNI registrado, actualizar alternate_dni
+          if (cleanDni && clientRow.dni !== cleanDni) {
+            try {
+              await supabase
+                .from('clients')
+                .update({ alternate_dni: cleanDni })
+                .eq('id', clientRow.id);
+            } catch {
+              // No bloquea la reserva si falla actualización secundaria
+            }
           }
+        } else if (booking.clientName && cleanDni) {
+          // Auto-registrar alumna si no existe en la base de datos
+          try {
+            const { data: createdClient } = await supabase
+              .from('clients')
+              .insert({
+                name: booking.clientName,
+                dni: cleanDni,
+                email: cleanEmail || null,
+                phone: booking.clientPhone?.trim() || '+51 900 000 000',
+                status: 'activo',
+                registration_method: 'manual_web',
+                medical_notes: booking.medicalAlert || null,
+              })
+              .select('id')
+              .maybeSingle();
+            if (createdClient?.id) {
+              clientId = createdClient.id;
+            }
+          } catch (cInsertErr) {
+            console.warn('Registro secundario en clients omitido, continuando con bookings:', cInsertErr);
+          }
+        }
+      }
+
+      const scheduledDate = booking.scheduledDate || getUpcomingDateForDay(booking.classDay);
+
+      // 2. Comprobar si ya existe una reserva activa para este alumno en este turno y fecha
+      if (cleanDni && booking.classId) {
+        const { data: existingBooking } = await supabase
+          .from('bookings')
+          .select('*')
+          .eq('class_id', booking.classId)
+          .eq('client_dni', cleanDni)
+          .eq('scheduled_date', scheduledDate)
+          .neq('status', 'cancelada')
+          .maybeSingle();
+
+        if (existingBooking) {
+          console.log('✨ Reserva existente encontrada en Supabase, reutilizando:', existingBooking.id);
+          return mapDbBookingToRecord(existingBooking);
         }
       }
 
       const dbRow = mapRecordToDbBooking({
         ...booking,
-        status: 'confirmada',
+        status: booking.status || 'confirmada',
+        scheduledDate,
       });
+
       if (clientId) {
         dbRow.client_id = clientId;
       }
 
+      // 3. Si no es lista de espera, validar y prevenir colisión de cama Reformer
+      if (!booking.isWaitlist && dbRow.bed_number) {
+        const { data: occupiedBeds } = await supabase
+          .from('bookings')
+          .select('bed_number')
+          .eq('class_id', dbRow.class_id)
+          .eq('scheduled_date', dbRow.scheduled_date)
+          .neq('status', 'cancelada');
+
+        const takenBeds = new Set((occupiedBeds || []).map((b: any) => b.bed_number));
+        if (takenBeds.has(dbRow.bed_number)) {
+          // Asignar dinámicamente la primera cama libre del 1 al 8
+          let firstFreeBed: number | undefined;
+          for (let bed = 1; bed <= 8; bed++) {
+            if (!takenBeds.has(bed)) {
+              firstFreeBed = bed;
+              break;
+            }
+          }
+          if (firstFreeBed) {
+            dbRow.bed_number = firstFreeBed;
+          }
+        }
+      } else if (booking.isWaitlist) {
+        dbRow.bed_number = null;
+        dbRow.is_waitlist = true;
+      }
+
+      // 4. Inserción de la reserva en Supabase
       const { data, error } = await supabase.from('bookings').insert([dbRow]).select().single();
       if (error) {
         let userMessage = error.message;
@@ -411,11 +486,38 @@ export const supabaseService = {
         console.warn('Error al insertar reserva en Supabase:', error);
         throw new Error(userMessage);
       }
+
       if (!data) return null;
+
+      // 5. Descontar crédito del plan activo de la alumna en Supabase si aplica
+      if (clientId && !booking.isWaitlist) {
+        try {
+          const { data: activePlans } = await supabase
+            .from('client_plans')
+            .select('id, credits_left')
+            .eq('client_id', clientId)
+            .eq('is_active', true)
+            .eq('plan_type', 'pack')
+            .gt('credits_left', 0)
+            .order('created_at', { ascending: true })
+            .limit(1);
+
+          if (activePlans && activePlans.length > 0) {
+            const planToDeduct = activePlans[0];
+            await supabase
+              .from('client_plans')
+              .update({ credits_left: Math.max(0, (planToDeduct.credits_left || 1) - 1) })
+              .eq('id', planToDeduct.id);
+          }
+        } catch (planDeductErr) {
+          console.warn('Deducción de crédito en client_plans omitida:', planDeductErr);
+        }
+      }
+
       return mapDbBookingToRecord(data);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Excepción al crear reserva en Supabase:', err);
-      return null;
+      throw err;
     }
   },
 

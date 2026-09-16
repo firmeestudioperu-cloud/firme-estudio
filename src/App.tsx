@@ -1,4 +1,4 @@
-import React, { useState, useEffect, Suspense, lazy } from 'react';
+import React, { useState, useEffect, useMemo, Suspense, lazy } from 'react';
 import { Header } from './components/Header';
 import { Hero } from './components/Hero';
 import { MyClasses } from './components/MyClasses';
@@ -222,11 +222,107 @@ export default function App() {
     plan?: PricingPlan;
   } | null>(null);
 
-  // Pre-seed an initial booking (e.g. c2) so the user immediately sees the 'Mis Clases' panel
-  const [bookedClassIds, setBookedClassIds] = useState<Set<string>>(new Set(['c2']));
-  const [waitlistClassIds, setWaitlistClassIds] = useState<Set<string>>(new Set());
-  const [alertClassIds, setAlertClassIds] = useState<Set<string>>(new Set(['c4']));
+  // Persistent tracking of bookings on this device/browser
+  const [deviceBookingIds, setDeviceBookingIds] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem('firme_device_booking_ids');
+      return saved ? new Set(JSON.parse(saved)) : new Set<string>();
+    } catch {
+      return new Set<string>();
+    }
+  });
+
+  const [bookedClassIds, setBookedClassIds] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem('firme_booked_class_ids');
+      return saved ? new Set(JSON.parse(saved)) : new Set<string>();
+    } catch {
+      return new Set<string>();
+    }
+  });
+
+  const [waitlistClassIds, setWaitlistClassIds] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem('firme_waitlist_class_ids');
+      return saved ? new Set(JSON.parse(saved)) : new Set<string>();
+    } catch {
+      return new Set<string>();
+    }
+  });
+
+  const [alertClassIds, setAlertClassIds] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem('firme_alert_class_ids');
+      return saved ? new Set(JSON.parse(saved)) : new Set<string>(['mar-2']);
+    } catch {
+      return new Set<string>(['mar-2']);
+    }
+  });
+
   const [bookingModalData, setBookingModalData] = useState<BookingModalData | null>(null);
+
+  // Sync state sets with localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('firme_device_booking_ids', JSON.stringify(Array.from(deviceBookingIds)));
+    } catch {}
+  }, [deviceBookingIds]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('firme_booked_class_ids', JSON.stringify(Array.from(bookedClassIds)));
+    } catch {}
+  }, [bookedClassIds]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('firme_waitlist_class_ids', JSON.stringify(Array.from(waitlistClassIds)));
+    } catch {}
+  }, [waitlistClassIds]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('firme_alert_class_ids', JSON.stringify(Array.from(alertClassIds)));
+    } catch {}
+  }, [alertClassIds]);
+
+  // Re-synchronize student's booked & waitlist classes whenever bookingsList or currentUser changes
+  useEffect(() => {
+    const userDni = currentUser?.dni?.trim().toLowerCase();
+    const userAltDni = currentUser?.alternateDni?.trim().toLowerCase();
+    const userEmail = currentUser?.email?.trim().toLowerCase();
+    const userName = currentUser?.name?.trim().toLowerCase();
+
+    const myBooked = new Set<string>();
+    const myWaitlist = new Set<string>();
+
+    bookingsList.forEach((b) => {
+      if (b.status === 'cancelada') return;
+
+      const bDni = b.clientDni?.trim().toLowerCase();
+      const bEmail = b.clientEmail?.trim().toLowerCase();
+      const bName = b.clientName?.trim().toLowerCase();
+
+      const isMyRecord =
+        (userDni && bDni && (bDni === userDni || bDni === userAltDni)) ||
+        (userEmail && bEmail && bEmail === userEmail) ||
+        (userName && bName && bName === userName) ||
+        deviceBookingIds.has(b.id);
+
+      if (isMyRecord) {
+        if (b.isWaitlist) {
+          myWaitlist.add(b.classId);
+        } else {
+          myBooked.add(b.classId);
+        }
+      }
+    });
+
+    if (myBooked.size > 0 || myWaitlist.size > 0) {
+      setBookedClassIds(myBooked);
+      setWaitlistClassIds(myWaitlist);
+    }
+  }, [bookingsList, currentUser, deviceBookingIds]);
 
   // Auto-opening quick auth modal for new visitors
   useEffect(() => {
@@ -545,6 +641,43 @@ export default function App() {
   ) => {
     const session = classesList.find((c) => c.id === classId);
 
+    const medicalSummary = Array.isArray(clientData?.healthConditions) && clientData.healthConditions.length
+      ? `${clientData.healthConditions.join(', ')}${
+          clientData.medicalNotes ? ` — Nota: ${clientData.medicalNotes}` : ''
+        }`
+      : typeof clientData?.healthConditions === 'string' && clientData.healthConditions
+      ? clientData.healthConditions
+      : undefined;
+
+    const newTempId = `b-${Date.now()}`;
+    const newRecord: BookingRecord = {
+      id: newTempId,
+      classId: session?.id || classId,
+      className: session?.name || 'Clase Reformer',
+      classTime: session?.time || '08:00',
+      classDay: session?.day || 'lun',
+      instructor: session?.instructor || 'Instructora FIRME',
+      clientName: clientData?.name || currentUser?.name || 'Cliente Registrado',
+      clientEmail: clientData?.email || currentUser?.email || 'alumno@firmestudio.pe',
+      clientPhone: clientData?.phone || currentUser?.phone || '+51 987 654 321',
+      clientDni: clientData?.dni || currentUser?.dni || '74829103',
+      medicalAlert: medicalSummary,
+      status: 'confirmada',
+      bookedAt: new Date().toLocaleDateString('es-PE', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      }),
+      isWaitlist: isWaitlist,
+      bedNumber: isWaitlist ? undefined : (clientData?.selectedBed || 3),
+    };
+
+    // 1. Guardar en memoria local y registrar ID de reserva del dispositivo
+    setDeviceBookingIds((prev) => new Set(prev).add(newTempId));
+    setBookingsList((prev) => [newRecord, ...prev]);
+
     if (isWaitlist) {
       setWaitlistClassIds((prev) => new Set(prev).add(classId));
       showToast('Lista de espera activada', 'Te avisaremos por WhatsApp si se libera una plaza.');
@@ -556,58 +689,54 @@ export default function App() {
         )
       );
 
-      if (session) {
-        const medicalSummary = Array.isArray(clientData?.healthConditions) && clientData.healthConditions.length
-          ? `${clientData.healthConditions.join(', ')}${
-              clientData.medicalNotes ? ` — Nota: ${clientData.medicalNotes}` : ''
-            }`
-          : typeof clientData?.healthConditions === 'string' && clientData.healthConditions
-          ? clientData.healthConditions
-          : undefined;
-
-        const newRecord: BookingRecord = {
-          id: `b-${Date.now()}`,
-          classId: session.id,
-          className: session.name,
-          classTime: session.time,
-          classDay: session.day,
-          instructor: session.instructor,
-          clientName: clientData?.name || currentUser?.name || 'Cliente Registrado',
-          clientEmail: clientData?.email || currentUser?.email || 'alumno@firmestudio.pe',
-          clientPhone: clientData?.phone || currentUser?.phone || '+51 987 654 321',
-          clientDni: clientData?.dni || currentUser?.dni || '74829103',
-          medicalAlert: medicalSummary,
-          status: 'confirmada',
-          bookedAt: new Date().toLocaleDateString('es-PE', {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-          }),
-          isWaitlist: false,
-          bedNumber: clientData?.selectedBed || 3,
-        };
-        setBookingsList((prev) => [newRecord, ...prev]);
-
-        if (isSupabaseConfigured()) {
-          supabaseService.createBooking(newRecord).then((res) => {
-            if (!res) {
-              showToast(
-                'Aviso de Guardado',
-                'La reserva se guardó localmente, pero no se pudo sincronizar con la base de datos en la nube.',
-                true
-              );
+      // Descontar crédito de sesión
+      setCurrentUser((prev) =>
+        prev
+          ? {
+              ...prev,
+              credits: Math.max(0, (prev.credits ?? 8) - 1),
+              creditsLeft: Math.max(0, (prev.creditsLeft ?? 8) - 1),
             }
-          }).catch((err) => {
-            console.warn('Error sincronizando reserva con Supabase:', err);
-            showToast(
-              'Error al Sincronizar Reserva',
-              `Fallo al enviar la reserva a Supabase: ${err?.message || 'Error de conexión'}`,
-              true
-            );
+          : prev
+      );
+    }
+
+    // 2. Persistir en Supabase Cloud
+    if (isSupabaseConfigured()) {
+      supabaseService.createBooking(newRecord).then((res) => {
+        if (res && res.id) {
+          // Reemplazar el ID temporal con el UUID final de Supabase
+          setBookingsList((prev) =>
+            prev.map((b) => (b.id === newTempId ? res : b))
+          );
+          setDeviceBookingIds((prev) => {
+            const next = new Set(prev);
+            next.delete(newTempId);
+            next.add(res.id);
+            return next;
           });
+          showToast(
+            '¡Reserva Guardada en la Nube!',
+            isWaitlist
+              ? 'Has quedado registrada en la lista de espera.'
+              : `Tu plaza para ${newRecord.className} fue confirmada y guardada en Supabase.`
+          );
+        } else {
+          showToast(
+            'Aviso de Guardado',
+            'La reserva se guardó localmente, pero no se pudo sincronizar con la base de datos en la nube.',
+            true
+          );
         }
+      }).catch((err) => {
+        console.warn('Error sincronizando reserva con Supabase:', err);
+        showToast(
+          'Error al Sincronizar Reserva',
+          `Fallo al enviar la reserva a Supabase: ${err?.message || 'Error de conexión'}`,
+          true
+        );
+      });
+    }
 
         if (!currentUser && clientData) {
           const { role, roleTitle } = determineUserRole(clientData.name, clientData.email);
@@ -695,10 +824,8 @@ export default function App() {
             }
           });
         }
-      }
 
-      handleGainExp(100, `Reserva asegurada en ${session ? session.name : 'Reformer'}`);
-    }
+        handleGainExp(100, `Reserva asegurada en ${session ? session.name : 'Reformer'}`);
   };
 
   const handleCancelBooking = (classId: string) => {
@@ -717,13 +844,30 @@ export default function App() {
     );
 
     // Cancelar en la lista de reservas y sincronizar con Supabase
-    const activeBooking = bookingsList.find(
-      (b) => b.classId === classId && b.status !== 'cancelada'
-    );
+    const userDni = currentUser?.dni?.trim().toLowerCase();
+    const userEmail = currentUser?.email?.trim().toLowerCase();
+
+    const activeBooking =
+      bookingsList.find(
+        (b) =>
+          b.classId === classId &&
+          b.status !== 'cancelada' &&
+          ((userDni && b.clientDni?.trim().toLowerCase() === userDni) ||
+           (userEmail && b.clientEmail?.trim().toLowerCase() === userEmail) ||
+           deviceBookingIds.has(b.id))
+      ) ||
+      bookingsList.find((b) => b.classId === classId && b.status !== 'cancelada');
+
     if (activeBooking) {
       setBookingsList((prev) =>
         prev.map((b) => (b.id === activeBooking.id ? { ...b, status: 'cancelada' } : b))
       );
+      setDeviceBookingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(activeBooking.id);
+        return next;
+      });
+
       if (isSupabaseConfigured()) {
         supabaseService.updateBookingStatus(activeBooking.id, 'cancelada').then((success) => {
           if (!success) {
@@ -955,9 +1099,105 @@ export default function App() {
     );
   };
 
-  const bookedClasses = classesList.filter((c) => bookedClassIds.has(c.id));
-  const waitlistClasses = classesList.filter((c) => waitlistClassIds.has(c.id));
-  const alertClasses = classesList.filter((c) => alertClassIds.has(c.id));
+  const bookedClasses = useMemo(() => {
+    const userDni = currentUser?.dni?.trim().toLowerCase();
+    const userAltDni = currentUser?.alternateDni?.trim().toLowerCase();
+    const userEmail = currentUser?.email?.trim().toLowerCase();
+    const userName = currentUser?.name?.trim().toLowerCase();
+
+    const myConfirmedBookings = bookingsList.filter((b) => {
+      if (b.status === 'cancelada' || b.isWaitlist) return false;
+      const bDni = b.clientDni?.trim().toLowerCase();
+      const bEmail = b.clientEmail?.trim().toLowerCase();
+      const bName = b.clientName?.trim().toLowerCase();
+
+      return (
+        (userDni && bDni && (bDni === userDni || bDni === userAltDni)) ||
+        (userEmail && bEmail && bEmail === userEmail) ||
+        (userName && bName && bName === userName) ||
+        deviceBookingIds.has(b.id) ||
+        bookedClassIds.has(b.classId)
+      );
+    });
+
+    if (myConfirmedBookings.length > 0) {
+      return myConfirmedBookings.map((b) => {
+        const found = classesList.find((c) => c.id === b.classId);
+        if (found) {
+          return {
+            ...found,
+            time: b.classTime || found.time,
+            day: (b.classDay as any) || found.day,
+            instructor: b.instructor || found.instructor,
+            name: b.className || found.name,
+          };
+        }
+        return {
+          id: b.classId,
+          name: b.className || 'Clase Reformer',
+          instructor: b.instructor || 'Instructora FIRME',
+          time: b.classTime || '08:00',
+          duration: '50 min',
+          totalSpots: 8,
+          occupiedSpots: 6,
+          day: (b.classDay as any) || 'lun',
+          level: 'Principiante',
+          classType: 'Reformer',
+          focus: 'Reserva confirmada en FIRME STUDIO',
+        } as ClassSession;
+      });
+    }
+
+    return classesList.filter((c) => bookedClassIds.has(c.id));
+  }, [bookingsList, currentUser, deviceBookingIds, bookedClassIds, classesList]);
+
+  const waitlistClasses = useMemo(() => {
+    const userDni = currentUser?.dni?.trim().toLowerCase();
+    const userAltDni = currentUser?.alternateDni?.trim().toLowerCase();
+    const userEmail = currentUser?.email?.trim().toLowerCase();
+    const userName = currentUser?.name?.trim().toLowerCase();
+
+    const myWaitlistBookings = bookingsList.filter((b) => {
+      if (b.status === 'cancelada' || !b.isWaitlist) return false;
+      const bDni = b.clientDni?.trim().toLowerCase();
+      const bEmail = b.clientEmail?.trim().toLowerCase();
+      const bName = b.clientName?.trim().toLowerCase();
+
+      return (
+        (userDni && bDni && (bDni === userDni || bDni === userAltDni)) ||
+        (userEmail && bEmail && bEmail === userEmail) ||
+        (userName && bName && bName === userName) ||
+        deviceBookingIds.has(b.id) ||
+        waitlistClassIds.has(b.classId)
+      );
+    });
+
+    if (myWaitlistBookings.length > 0) {
+      return myWaitlistBookings.map((b) => {
+        const found = classesList.find((c) => c.id === b.classId);
+        if (found) return found;
+        return {
+          id: b.classId,
+          name: b.className || 'Clase en Espera',
+          instructor: b.instructor || 'Instructora FIRME',
+          time: b.classTime || '08:00',
+          duration: '50 min',
+          totalSpots: 8,
+          occupiedSpots: 8,
+          day: (b.classDay as any) || 'lun',
+          level: 'Principiante',
+          classType: 'Reformer',
+          focus: 'Lista de espera activa',
+        } as ClassSession;
+      });
+    }
+
+    return classesList.filter((c) => waitlistClassIds.has(c.id));
+  }, [bookingsList, currentUser, deviceBookingIds, waitlistClassIds, classesList]);
+
+  const alertClasses = useMemo(() => {
+    return classesList.filter((c) => alertClassIds.has(c.id));
+  }, [classesList, alertClassIds]);
 
   // Quick Registration Landing
   if (activeTab === 'registro') {
@@ -1305,6 +1545,7 @@ export default function App() {
             data={bookingModalData}
             onClose={() => setBookingModalData(null)}
             onConfirmBooking={handleConfirmBooking}
+            onViewMyClasses={() => handleSelectTab('mis-clases')}
             currentUser={currentUser}
             onOpenGoogleAuth={() => setIsGoogleAuthOpen(true)}
           />
