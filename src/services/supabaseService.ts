@@ -379,16 +379,24 @@ export const supabaseService = {
         const { data: clientRow } = await query.maybeSingle();
         if (clientRow?.id) {
           clientId = clientRow.id;
-          // Si el cliente fue hallado por email pero no tenía este DNI registrado, actualizar alternate_dni
-          if (cleanDni && clientRow.dni !== cleanDni) {
-            try {
-              await supabase
-                .from('clients')
-                .update({ alternate_dni: cleanDni })
-                .eq('id', clientRow.id);
-            } catch {
-              // No bloquea la reserva si falla actualización secundaria
+          // Actualizar datos del cliente con información fresca de la reserva (notas médicas, teléfono, alternate_dni)
+          try {
+            const updateFields: any = { updated_at: new Date().toISOString() };
+            if (booking.medicalAlert) {
+              updateFields.medical_notes = booking.medicalAlert;
             }
+            if (booking.clientPhone) {
+              updateFields.phone = booking.clientPhone;
+            }
+            if (cleanDni && clientRow.dni !== cleanDni) {
+              updateFields.alternate_dni = cleanDni;
+            }
+            await supabase
+              .from('clients')
+              .update(updateFields)
+              .eq('id', clientRow.id);
+          } catch (cUpdateErr) {
+            console.warn('Actualización de datos en clients omitida:', cUpdateErr);
           }
         } else if (booking.clientName && cleanDni) {
           // Auto-registrar alumna si no existe en la base de datos

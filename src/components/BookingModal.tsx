@@ -89,34 +89,79 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const modalRef = useRef<HTMLDivElement>(null);
   const firstInputRef = useRef<HTMLInputElement>(null);
 
-  // Prefill when currentUser changes or modal opens
-  useEffect(() => {
-    setIsSuccess(false);
-    setErrorMsg('');
-    setActiveStep(1);
+  const lastSessionIdRef = useRef<string | null>(null);
+  const prevUserIdRef = useRef<string | undefined>(currentUser?.id);
 
-    if (currentUser) {
-      setUserName(currentUser.name || '');
-      setUserEmail(currentUser.email || '');
-      setUserPhone(currentUser.phone || '');
-      setUserDni(currentUser.dni || '');
-      if (currentUser.experienceLevel) {
-        setExperienceLevel(currentUser.experienceLevel);
-      }
-    } else {
-      setUserName('');
-      setUserEmail('');
-      setUserPhone('');
-      setUserDni('');
-      setExperienceLevel('Principiante');
+  // Prefill when modal opens for a new session, or when user logs in with Google while open
+  useEffect(() => {
+    if (!data) {
+      lastSessionIdRef.current = null;
+      document.body.style.overflow = '';
+      return;
     }
 
-    if (data) {
+    const isNewSession = lastSessionIdRef.current !== data.classSession.id;
+
+    if (isNewSession) {
+      lastSessionIdRef.current = data.classSession.id;
+      setIsSuccess(false);
+      setErrorMsg('');
+      setActiveStep(1);
+
+      if (currentUser) {
+        setUserName(currentUser.name || '');
+        setUserEmail(currentUser.email || '');
+        setUserPhone(currentUser.phone || '');
+        setUserDni(currentUser.dni || '');
+        if (currentUser.experienceLevel) {
+          setExperienceLevel(currentUser.experienceLevel);
+        }
+        if (currentUser.healthConditions && currentUser.healthConditions.length > 0) {
+          setSelectedConditions(currentUser.healthConditions);
+        }
+        if (currentUser.medicalNotes) {
+          setMedicalNotes(currentUser.medicalNotes);
+        }
+        if (currentUser.emergencyContact) {
+          setEmergencyContact(currentUser.emergencyContact);
+        }
+        if (currentUser.emergencyPhone) {
+          setEmergencyPhone(currentUser.emergencyPhone);
+        }
+      } else {
+        setUserName('');
+        setUserEmail('');
+        setUserPhone('');
+        setUserDni('');
+        setExperienceLevel('Principiante');
+        setSelectedConditions(['Ninguna (Apto al 100%)']);
+        setMedicalNotes('');
+        setEmergencyContact('');
+        setEmergencyPhone('');
+      }
+
       setTimeout(() => {
         firstInputRef.current?.focus();
       }, 50);
-      document.body.style.overflow = 'hidden';
+    } else {
+      // If user logs in via Google/One-Tap while modal is already open
+      if (!prevUserIdRef.current && currentUser?.id) {
+        if (!userName && currentUser.name) setUserName(currentUser.name);
+        if (!userEmail && currentUser.email) setUserEmail(currentUser.email);
+        if (!userPhone && currentUser.phone) setUserPhone(currentUser.phone);
+        if (!userDni && currentUser.dni) setUserDni(currentUser.dni);
+        if (currentUser.experienceLevel) setExperienceLevel(currentUser.experienceLevel);
+        if (currentUser.healthConditions && currentUser.healthConditions.length > 0) {
+          setSelectedConditions(currentUser.healthConditions);
+        }
+        if (currentUser.medicalNotes && !medicalNotes) setMedicalNotes(currentUser.medicalNotes);
+        if (currentUser.emergencyContact && !emergencyContact) setEmergencyContact(currentUser.emergencyContact);
+        if (currentUser.emergencyPhone && !emergencyPhone) setEmergencyPhone(currentUser.emergencyPhone);
+      }
     }
+
+    prevUserIdRef.current = currentUser?.id;
+    document.body.style.overflow = 'hidden';
 
     return () => {
       document.body.style.overflow = '';

@@ -641,13 +641,18 @@ export default function App() {
   ) => {
     const session = classesList.find((c) => c.id === classId);
 
-    const medicalSummary = Array.isArray(clientData?.healthConditions) && clientData.healthConditions.length
-      ? `${clientData.healthConditions.join(', ')}${
-          clientData.medicalNotes ? ` — Nota: ${clientData.medicalNotes}` : ''
-        }`
-      : typeof clientData?.healthConditions === 'string' && clientData.healthConditions
-      ? clientData.healthConditions
-      : undefined;
+    const conditionsStr = Array.isArray(clientData?.healthConditions)
+      ? clientData.healthConditions.filter((c) => c !== 'Ninguna (Apto al 100%)').join(', ')
+      : clientData?.healthConditions || '';
+
+    let medicalSummary: string | undefined = undefined;
+    if (conditionsStr && clientData?.medicalNotes) {
+      medicalSummary = `${conditionsStr} — Indicaciones: ${clientData.medicalNotes}`;
+    } else if (conditionsStr) {
+      medicalSummary = conditionsStr;
+    } else if (clientData?.medicalNotes) {
+      medicalSummary = clientData.medicalNotes;
+    }
 
     const newTempId = `b-${Date.now()}`;
     const newRecord: BookingRecord = {
@@ -688,18 +693,57 @@ export default function App() {
           c.id === classId ? { ...c, occupiedSpots: Math.min(c.totalSpots, c.occupiedSpots + 1) } : c
         )
       );
-
-      // Descontar crédito de sesión
-      setCurrentUser((prev) =>
-        prev
-          ? {
-              ...prev,
-              credits: Math.max(0, (prev.credits ?? 8) - 1),
-              creditsLeft: Math.max(0, (prev.creditsLeft ?? 8) - 1),
-            }
-          : prev
-      );
     }
+
+    // Actualizar usuario activo con datos frescos (teléfono, DNI, nivel, notas médicas, descontar crédito)
+    setCurrentUser((prev) => {
+      let updated: AuthUser;
+      if (prev) {
+        updated = {
+          ...prev,
+          name: clientData?.name || prev.name,
+          email: clientData?.email || prev.email,
+          phone: clientData?.phone || prev.phone,
+          dni: clientData?.dni || prev.dni,
+          experienceLevel: clientData?.experienceLevel || prev.experienceLevel,
+          healthConditions: clientData?.healthConditions || prev.healthConditions,
+          medicalNotes: clientData?.medicalNotes || prev.medicalNotes,
+          emergencyContact: clientData?.emergencyContact || prev.emergencyContact,
+          emergencyPhone: clientData?.emergencyPhone || prev.emergencyPhone,
+          credits: isWaitlist ? (prev.credits ?? 8) : Math.max(0, (prev.credits ?? 8) - 1),
+          creditsLeft: isWaitlist ? (prev.creditsLeft ?? 8) : Math.max(0, (prev.creditsLeft ?? 8) - 1),
+        };
+      } else if (clientData) {
+        const { role, roleTitle } = determineUserRole(clientData.name, clientData.email, clientData.dni);
+        updated = {
+          id: `usr-${Date.now()}`,
+          name: clientData.name,
+          email: clientData.email,
+          role: role,
+          roleTitle: roleTitle,
+          phone: clientData.phone,
+          dni: clientData.dni,
+          provider: clientData.authProvider || 'manual',
+          avatar: clientData.googleAvatar,
+          experienceLevel: clientData.experienceLevel,
+          healthConditions: clientData.healthConditions,
+          medicalNotes: clientData.medicalNotes,
+          emergencyContact: clientData.emergencyContact,
+          emergencyPhone: clientData.emergencyPhone,
+          planName: 'Clase Suelta',
+          creditsLeft: 0,
+          totalAttended: 1,
+        };
+      } else {
+        return prev;
+      }
+      try {
+        localStorage.setItem('firme_auth_user', JSON.stringify(updated));
+      } catch (e) {
+        console.warn('Error saving user to localStorage:', e);
+      }
+      return updated;
+    });
 
     // 2. Persistir en Supabase Cloud
     if (isSupabaseConfigured()) {
@@ -738,94 +782,97 @@ export default function App() {
       });
     }
 
-        if (!currentUser && clientData) {
-          const { role, roleTitle } = determineUserRole(clientData.name, clientData.email);
-          const autoUser: AuthUser = {
-            id: `usr-${Date.now()}`,
-            name: clientData.name,
-            email: clientData.email,
-            role: role,
-            roleTitle: roleTitle,
-            phone: clientData.phone,
-            dni: clientData.dni,
-            provider: clientData.authProvider || 'manual',
-            avatar: clientData.googleAvatar,
-            experienceLevel: clientData.experienceLevel,
-            healthConditions: clientData.healthConditions,
-            medicalNotes: clientData.medicalNotes,
-            emergencyContact: clientData.emergencyContact,
-            emergencyPhone: clientData.emergencyPhone,
-            planName: 'Clase Suelta',
-            creditsLeft: 1,
-            totalAttended: 0,
+    const clientEmail = clientData?.email || currentUser?.email;
+    const clientName = clientData?.name || currentUser?.name;
+    const clientPhone = clientData?.phone || currentUser?.phone || '+51 900 000 000';
+    const clientDni = clientData?.dni || currentUser?.dni || '74829103';
+    const emergencyContactStr = clientData?.emergencyContact
+      ? `${clientData.emergencyContact} ${clientData.emergencyPhone ? `(${clientData.emergencyPhone})` : ''}`.trim()
+      : currentUser?.emergencyContact || '';
+    const medicalNotesStr = clientData?.medicalNotes || conditionsStr || '';
+
+    if (clientEmail && clientName) {
+      setClientsList((prev) => {
+        const existing = prev.find(
+          (c) =>
+            (c.email && c.email.toLowerCase() === clientEmail.toLowerCase()) ||
+            (clientDni && c.dni === clientDni)
+        );
+
+        if (!existing) {
+          const newClientProfile: ClientProfile = {
+            id: `cli-${Date.now()}`,
+            name: clientName,
+            dni: clientDni,
+            phone: clientPhone,
+            email: clientEmail,
+            currentPlan: 'Clase Suelta',
+            planType: 'clase_suelta',
+            creditsLeft: 0,
+            totalAttended: 1,
+            status: 'activo',
+            joinDate: new Date().toLocaleDateString('es-PE'),
+            lastVisit: 'Hoy (Reserva)',
+            emergencyContact: emergencyContactStr,
+            emergencyPhone: clientData?.emergencyPhone,
+            medicalNotes: medicalNotesStr,
           };
-          setCurrentUser(autoUser);
-          localStorage.setItem('firme_auth_user', JSON.stringify(autoUser));
-        }
-
-        const clientEmail = clientData?.email || currentUser?.email;
-        const clientName = clientData?.name || currentUser?.name;
-        if (clientEmail && clientName) {
-          setClientsList((prev) => {
-            const exists = prev.some(
-              (c) =>
-                (c.email && c.email.toLowerCase() === clientEmail.toLowerCase()) ||
-                (clientData?.dni && c.dni === clientData.dni)
-            );
-            if (!exists) {
-              const newClientProfile: ClientProfile = {
-                id: `cli-${Date.now()}`,
-                name: clientName,
-                dni: clientData?.dni || currentUser?.dni || 'No registrado',
-                phone: clientData?.phone || currentUser?.phone || '+51 900 000 000',
-                email: clientEmail,
-                currentPlan: 'Clase Suelta',
-                planType: 'clase_suelta',
-                creditsLeft: 0,
-                totalAttended: 1,
-                status: 'activo',
-                joinDate: new Date().toLocaleDateString('es-PE'),
-                lastVisit: 'Hoy (Reserva)',
-                emergencyContact: clientData?.emergencyContact
-                  ? `${clientData.emergencyContact} ${clientData.emergencyPhone ? `(${clientData.emergencyPhone})` : ''}`.trim()
-                  : '',
-                medicalNotes: clientData?.medicalNotes || (Array.isArray(clientData?.healthConditions) ? clientData.healthConditions.join(', ') : (typeof clientData?.healthConditions === 'string' ? clientData.healthConditions : '')),
-              };
-              if (isSupabaseConfigured()) {
-                supabaseService.createClient(newClientProfile).then((res) => {
-                  if (!res) {
-                    showToast(
-                      'Aviso de Alumna',
-                      'Perfil guardado en el navegador, pero no se pudo registrar en la base de datos.',
-                      true
-                    );
-                  }
-                }).catch((err) => {
-                  showToast(
-                    'Error al Guardar Alumna',
-                    `Fallo al sincronizar alumna con Supabase: ${err?.message || 'Error de conexión'}`,
-                    true
-                  );
-                });
+          if (isSupabaseConfigured()) {
+            supabaseService.createClient(newClientProfile).then((res) => {
+              if (!res) {
+                showToast(
+                  'Aviso de Alumna',
+                  'Perfil guardado en el navegador, pero no se pudo registrar en la base de datos.',
+                  true
+                );
               }
-              return [newClientProfile, ...prev];
-            } else {
-              return prev.map((c) =>
-                (c.email && c.email.toLowerCase() === clientEmail.toLowerCase()) ||
-                (clientData?.dni && c.dni === clientData.dni)
-                  ? {
-                      ...c,
-                      lastVisit: 'Hoy (Reserva)',
-                      totalAttended: c.totalAttended + 1,
-                      medicalNotes: clientData?.medicalNotes || c.medicalNotes,
-                    }
-                  : c
+            }).catch((err) => {
+              showToast(
+                'Error al Guardar Alumna',
+                `Fallo al sincronizar alumna con Supabase: ${err?.message || 'Error de conexión'}`,
+                true
               );
-            }
-          });
+            });
+          }
+          return [newClientProfile, ...prev];
+        } else {
+          const updatedProfile: ClientProfile = {
+            ...existing,
+            name: clientName || existing.name,
+            phone: clientPhone || existing.phone,
+            dni: clientDni || existing.dni,
+            emergencyContact: emergencyContactStr || existing.emergencyContact,
+            emergencyPhone: clientData?.emergencyPhone || existing.emergencyPhone,
+            medicalNotes: medicalNotesStr || existing.medicalNotes,
+            lastVisit: 'Hoy (Reserva)',
+            totalAttended: (existing.totalAttended || 0) + 1,
+          };
+          if (isSupabaseConfigured()) {
+            supabaseService.updateClient(updatedProfile).catch((err) => {
+              console.warn('Error actualizando perfil en Supabase:', err);
+            });
+          }
+          return prev.map((c) => (c.id === existing.id ? updatedProfile : c));
         }
+      });
 
-        handleGainExp(100, `Reserva asegurada en ${session ? session.name : 'Reformer'}`);
+      // Asegurar sincronización del perfil en Supabase
+      if (isSupabaseConfigured()) {
+        supabaseService.saveClientProfile({
+          name: clientName,
+          email: clientEmail,
+          phone: clientPhone,
+          dni: clientDni,
+          experienceLevel: clientData?.experienceLevel || currentUser?.experienceLevel || 'Principiante',
+          healthConditions: clientData?.healthConditions || currentUser?.healthConditions || [],
+          medicalNotes: medicalNotesStr,
+          emergencyContact: clientData?.emergencyContact || currentUser?.emergencyContact,
+          emergencyPhone: clientData?.emergencyPhone || currentUser?.emergencyPhone,
+        }).catch((err) => console.warn('Supabase profile sync warning:', err));
+      }
+    }
+
+    handleGainExp(100, `Reserva asegurada en ${session ? session.name : 'Reformer'}`);
   };
 
   const handleCancelBooking = (classId: string) => {
